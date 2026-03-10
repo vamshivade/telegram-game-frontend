@@ -14,6 +14,7 @@ const Home = () => {
     const [adStates, setAdStates] = useState({
         interstitial: { loading: false, message: null },
         popup: { loading: false, message: null },
+        direct: { loading: false, message: null },
     });
 
     // --- Daily Bonus ---
@@ -82,6 +83,15 @@ const Home = () => {
                 ? { ...prev, popup: { loading: false, message: null } }
                 : prev
         );
+    };
+
+    // --- Direct Link ---
+    const handleDirectLink = async () => {
+        setAdState('direct', { loading: true, message: null });
+        // Open the direct link in a new tab
+        window.open('https://omg10.com/4/10710196', '_blank');
+        // Give some time for the user to visit before claiming
+        setTimeout(() => claimAdReward('direct', 50), 2000);
     };
 
     const games = [
@@ -234,6 +244,36 @@ const Home = () => {
                         <div className="flex items-center gap-2 text-gray-500 text-xs font-bold">
                             <Timer size={14} />
                             <span>Auto</span>
+                        </div>
+                    </div>
+
+                    {/* Direct Link */}
+                    <div className="bg-white/5 border border-white/8 rounded-2xl p-4 flex items-center justify-between gap-4 hover:bg-white/[0.08] transition-all border-dashed border-yellow-500/30">
+                        <div className="flex items-center gap-4">
+                            <div className="text-3xl select-none">🔥</div>
+                            <div>
+                                <p className="font-bold text-white text-sm">Special Reward</p>
+                                <p className="text-gray-500 text-xs mt-0.5">Direct Link · +50 coins</p>
+                            </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1.5 shrink-0">
+                            <button
+                                id="btn-direct-link"
+                                onClick={handleDirectLink}
+                                disabled={adStates.direct.loading}
+                                className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-400 hover:to-red-400 disabled:opacity-60 text-white font-black text-sm px-5 py-2 rounded-xl transition-all active:scale-95 flex items-center gap-1.5 shadow-md shadow-orange-500/20"
+                            >
+                                {adStates.direct.loading ? (
+                                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white" />
+                                ) : (
+                                    <><ExternalLink size={13} /> Open</>
+                                )}
+                            </button>
+                            {adStates.direct.message && (
+                                <span className={`text-xs font-bold animate-in fade-in ${adStates.direct.message.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+                                    {adStates.direct.message.text}
+                                </span>
+                            )}
                         </div>
                     </div>
                 </div>
