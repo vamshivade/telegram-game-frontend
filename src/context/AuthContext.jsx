@@ -6,6 +6,7 @@ export const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [isAutoMode, setIsAutoMode] = useState(false);
 
     const loginWithTelegram = async (initData, isTelegram = true) => {
         try {
@@ -48,7 +49,10 @@ export const AuthProvider = ({ children }) => {
     }, []);
 
     return (
-        <AuthContext.Provider value={{ user, setUser, loading, loginWithTelegram, logout, fetchProfile }}>
+        <AuthContext.Provider value={{ 
+            user, setUser, loading, loginWithTelegram, logout, fetchProfile,
+            isAutoMode, setIsAutoMode 
+        }}>
             {children}
         </AuthContext.Provider>
     );

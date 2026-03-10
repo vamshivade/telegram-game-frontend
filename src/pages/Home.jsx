@@ -1,12 +1,12 @@
-import { useState, useContext } from 'react';
-import { Coins, Dice5, Gift, CheckCircle2, AlertCircle, Play, ExternalLink, Timer } from 'lucide-react';
+import { useState, useContext, useEffect, useRef } from 'react';
+import { Coins, Dice5, Gift, CheckCircle2, AlertCircle, Play, ExternalLink, Timer, Bot } from 'lucide-react';
 import GameCardComp from '../components/GameCard';
 import { AuthContext } from '../context/AuthContext';
 import useMonetag from '../hooks/useMonetag';
 import api from '../api/api';
 
 const Home = () => {
-    const { fetchProfile } = useContext(AuthContext);
+    const { fetchProfile, isAutoMode, user } = useContext(AuthContext);
     const { showRewardedInterstitial, showRewardedPopup } = useMonetag();
 
     const [claiming, setClaiming] = useState(false);
@@ -16,6 +16,9 @@ const Home = () => {
         popup: { loading: false, message: null },
         direct: { loading: false, message: null },
     });
+
+    const botTimeoutRef = useRef(null);
+    const isBotExecuting = useRef(false);
 
     // --- Daily Bonus ---
     const handleClaimBonus = async () => {
@@ -89,10 +92,73 @@ const Home = () => {
     const handleDirectLink = async () => {
         setAdState('direct', { loading: true, message: null });
         // Open the direct link in a new tab
-        window.open('https://omg10.com/4/10710196', '_blank');
+        const win = window.open('https://omg10.com/4/10710196', '_blank');
+        if (win) win.blur(); // Try to keep focus on app for bot
+        window.focus();
+
         // Give some time for the user to visit before claiming
-        setTimeout(() => claimAdReward('direct', 50), 2000);
+        await new Promise(r => setTimeout(r, 2000));
+        await claimAdReward('direct', 50);
     };
+
+    // --- Auto-Bot Logic ---
+    useEffect(() => {
+        if (!isAutoMode || !user) {
+            if (botTimeoutRef.current) clearTimeout(botTimeoutRef.current);
+            isBotExecuting.current = false;
+            return;
+        }
+
+        const runBotCycle = async () => {
+            if (!isAutoMode || isBotExecuting.current) return;
+            isBotExecuting.current = true;
+
+            console.log('🤖 Bot: Starting new cycle...');
+
+            try {
+                // 1. Claim Daily Bonus (Try every cycle, server handles 24h limit)
+                console.log('🤖 Bot: Attempting daily bonus...');
+                await handleClaimBonus();
+                await new Promise(r => setTimeout(r, 3000));
+
+                if (!isAutoMode) return;
+
+                // 2. Rewarded Interstitial
+                console.log('🤖 Bot: Triggering Interstitial Ad...');
+                await handleRewardedInterstitial();
+                await new Promise(r => setTimeout(r, 5000));
+
+                if (!isAutoMode) return;
+
+                // 3. Rewarded Popup
+                console.log('🤖 Bot: Triggering Popup Ad...');
+                await handleRewardedPopup();
+                await new Promise(r => setTimeout(r, 5000));
+
+                if (!isAutoMode) return;
+
+                // 4. Direct Link
+                console.log('🤖 Bot: Triggering Direct Link...');
+                await handleDirectLink();
+                
+            } catch (err) {
+                console.error('🤖 Bot: Cycle error', err);
+            } finally {
+                isBotExecuting.current = false;
+                if (isAutoMode) {
+                    console.log('🤖 Bot: Waiting for next cycle (30s)...');
+                    botTimeoutRef.current = setTimeout(runBotCycle, 30000);
+                }
+            }
+        };
+
+        runBotCycle();
+
+        return () => {
+            if (botTimeoutRef.current) clearTimeout(botTimeoutRef.current);
+            isBotExecuting.current = false;
+        };
+    }, [isAutoMode, user]);
 
     const games = [
         {
