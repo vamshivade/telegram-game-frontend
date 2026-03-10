@@ -24,8 +24,8 @@ function App() {
         if (isTelegram && initData) {
             // Real Telegram user with valid initData
             loginWithTelegram(initData, true);
-        } else if (!isTelegram && APP_MODE === 'development') {
-            // Mock login for browser in development
+        } else if (initData === '' || !isTelegram) {
+            // Default to guest/web login if no initData found
             loginWithTelegram(null, false);
         }
     }, [initData, isTelegram, user, APP_MODE, loading]);
@@ -41,29 +41,6 @@ function App() {
         return (
             <div className="flex items-center justify-center min-h-screen bg-telegram-dark">
                 <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-telegram-blue"></div>
-            </div>
-        );
-    }
-
-    // Show strict mode warning if in production and not inside Telegram
-    if (APP_MODE === 'production' && !isTelegram && !user) {
-        return (
-            <div className="min-h-screen bg-telegram-dark flex items-center justify-center p-6 bg-gradient-to-b from-telegram-dark to-black">
-                <div className="bg-telegram-card p-8 rounded-3xl border border-white/10 max-w-sm w-full text-center space-y-6 shadow-2xl">
-                    <div className="bg-yellow-500/10 p-4 rounded-full w-20 h-20 flex items-center justify-center mx-auto border border-yellow-500/20">
-                        <LucideShieldAlert size={40} className="text-yellow-500" />
-                    </div>
-                    <h1 className="text-2xl font-black text-white">Open in Telegram</h1>
-                    <p className="text-gray-400 leading-relaxed">
-                        This application is currently in <strong>Production Mode</strong> and can only be accessed through the Telegram Mini App.
-                    </p>
-                    <div className="pt-4">
-                        <button className="w-full bg-telegram-blue py-4 rounded-xl font-bold hover:bg-opacity-90 transition-all">
-                            Support Contact
-                        </button>
-                        <p className="text-[10px] text-gray-500 mt-4 uppercase tracking-widest">Strict Security Mode Active</p>
-                    </div>
-                </div>
             </div>
         );
     }

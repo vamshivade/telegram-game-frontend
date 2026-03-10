@@ -23,8 +23,8 @@ export const useTelegram = () => {
         }
     };
 
-    // isTelegram: true only when running inside Telegram Mini App with valid initData
-    const isTelegram = !!(window.Telegram?.WebApp && window.Telegram.WebApp.initData);
+    // isTelegram: true if running inside any Telegram WebApp environment
+    const isTelegram = !!(window.Telegram?.WebApp);
 
     return {
         onClose,
