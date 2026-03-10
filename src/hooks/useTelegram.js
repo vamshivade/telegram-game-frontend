@@ -23,13 +23,17 @@ export const useTelegram = () => {
         }
     };
 
+    // isTelegram: true only when running inside Telegram Mini App with valid initData
+    const isTelegram = !!(window.Telegram?.WebApp && window.Telegram.WebApp.initData);
+
     return {
         onClose,
         onToggleButton,
         tg,
-        isTelegram: !!window.Telegram?.WebApp?.initData, // Simple detection
+        isTelegram,
         user: tg?.initDataUnsafe?.user,
+        initDataUnsafe: tg?.initDataUnsafe,
         queryId: tg?.initDataUnsafe?.query_id,
-        initData: tg?.initData,
+        initData: tg?.initData || '',
     };
 };

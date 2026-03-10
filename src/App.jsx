@@ -14,16 +14,19 @@ function App() {
     const APP_MODE = import.meta.env.VITE_APP_MODE || 'production';
 
     useEffect(() => {
-        // Attempt login if not already logged in
-        if (!user) {
-            if (isTelegram) {
-                loginWithTelegram(initData, true);
-            } else if (APP_MODE === 'development') {
-                // Mock login for browser in development
-                loginWithTelegram(null, false);
-            }
+        // Wait until loading is complete before attempting login
+        if (loading) return;
+        // Already logged in
+        if (user) return;
+
+        if (isTelegram && initData) {
+            // Real Telegram user with valid initData
+            loginWithTelegram(initData, true);
+        } else if (!isTelegram && APP_MODE === 'development') {
+            // Mock login for browser in development
+            loginWithTelegram(null, false);
         }
-    }, [initData, isTelegram, user, APP_MODE]);
+    }, [initData, isTelegram, user, APP_MODE, loading]);
 
     if (loading) {
         return (
