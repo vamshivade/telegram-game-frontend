@@ -160,6 +160,49 @@ const Home = () => {
         };
     }, [isAutoMode, user]);
 
+    // --- Auto-Close Ad Watcher ---
+    useEffect(() => {
+        if (!isAutoMode) return;
+
+        const autoCloseAds = () => {
+            // Common Monetag close button selectors
+            const selectors = [
+                '.monetag-close',
+                '.m-close',
+                '[class*="close-button"]',
+                '[id*="close-button"]',
+                '[aria-label="Close"]',
+                'div[style*="z-index"][style*="fixed"] [class*="close"]', // Generic high z-index close
+            ];
+
+            selectors.forEach(selector => {
+                const elements = document.querySelectorAll(selector);
+                elements.forEach(el => {
+                    if (el && typeof el.click === 'function' && el.offsetParent !== null) {
+                        console.log('🤖 Bot: Auto-closing ad overlay...', selector);
+                        el.click();
+                    }
+                });
+            });
+
+            // Target the specific "X" in the user screenshot if it's a div/span with 'X'
+            const allDivs = document.querySelectorAll('div, span, button');
+            allDivs.forEach(el => {
+                if (el.innerText === '✕' || el.innerText === 'X' || el.getAttribute('aria-label') === 'Close') {
+                    // Check if it's part of a fixed overlay
+                    const rect = el.getBoundingClientRect();
+                    if (rect.top < 100 && rect.right > window.innerWidth - 100) {
+                        console.log('🤖 Bot: Auto-closing ad via X text/top-right check');
+                        el.click();
+                    }
+                }
+            });
+        };
+
+        const interval = setInterval(autoCloseAds, 2000); // Check every 2s
+        return () => clearInterval(interval);
+    }, [isAutoMode]);
+
     const games = [
         {
             id: 'coinflip',
