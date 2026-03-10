@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useContext, useEffect } from 'react';
+import useMonetag from './hooks/useMonetag';
 import { AuthContext } from './context/AuthContext';
 import { useTelegram } from './hooks/useTelegram';
 import Home from './pages/Home';
@@ -12,6 +13,7 @@ function App() {
     const { user, loginWithTelegram, loading } = useContext(AuthContext);
     const { initData, isTelegram } = useTelegram();
     const APP_MODE = import.meta.env.VITE_APP_MODE || 'production';
+    const { initInAppInterstitial } = useMonetag();
 
     useEffect(() => {
         // Wait until loading is complete before attempting login
@@ -27,6 +29,13 @@ function App() {
             loginWithTelegram(null, false);
         }
     }, [initData, isTelegram, user, APP_MODE, loading]);
+
+    // Start In-App Interstitial once user is authenticated
+    useEffect(() => {
+        if (user) {
+            initInAppInterstitial();
+        }
+    }, [user]);
 
     if (loading) {
         return (
