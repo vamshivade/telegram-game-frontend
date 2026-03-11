@@ -41,6 +41,13 @@ export const AuthProvider = ({ children }) => {
     };
 
     useEffect(() => {
+        // If the user's browser has Telegram data natively, 
+        // aggressively wipe any previous token stored in localStorage so they
+        // don't get stuck impersonating a bot account from a previous crashed session.
+        if (window.Telegram?.WebApp?.initData) {
+            localStorage.removeItem('token');
+        }
+
         if (localStorage.getItem('token')) {
             fetchProfile();
         } else {

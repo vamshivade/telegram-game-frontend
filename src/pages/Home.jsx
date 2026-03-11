@@ -267,139 +267,71 @@ const Home = () => {
     useEffect(() => {
         if (!isAutoMode) return;
 
-        const autoCloseAds = () => {
-            // Aggressive visual scan based on the user screenshot:
-            // "Download is ready", "Tap to proceed", and the big "ads by Monetag" overlay.
-            // The screenshot shows a very prominent button `Click to get the reward!` and a top-right `X`.
-            const closeSelectors = [
-                '#monetag-close', 
-                '.monetag-close',
-                '[id*="close-button"]',
-                '[class*="close-button"]',
-                '[class*="CloseButton"]',
-                '[aria-label="Close"]',
-                'div[style*="z-index"][style*="fixed"] svg',
-                '.m-close', // Older monetag
-                'div[style*="border-radius: 50%"] svg',  // Look for circular button containing SVG X (like in screenshot)
-                'div[style*="position: absolute"][style*="top"][style*="right"]'
-            ];
+        console.log('🤖 Bot: Initializing advanced DOM wipe observer...');
 
-            let closed = false;
+        // The absolute most aggressive way to nuke an ad: watch the DOM for ANY new large overlays or iframes 
+        // and instantly rip them out before they can block the screen.
+        const observer = new MutationObserver((mutations) => {
+            let wiped = false;
+            
+            mutations.forEach((mutation) => {
+                mutation.addedNodes.forEach((node) => {
+                    if (node.nodeType !== 1) return; // Only element nodes
+                    if (node.tagName === 'INS' || node.closest('ins') || node.id?.startsWith('google_')) return; // Skip Adsense
 
-            // Trigger a proper simulated mouse click as some ads ignore standard .click()
-            const triggerClick = (el) => {
-                if (!el || el.offsetParent === null) return false;
-                console.log('🤖 Bot: Discovered close button! Attempting to close...');
-                
-                // Try standard click
-                try {
-                    if (typeof el.click === 'function') el.click();
-                } catch (e) {}
-
-                // Dispatch synthetic event just in case
-                try {
-                    const clickEvent = new MouseEvent('click', {
-                        view: window,
-                        bubbles: true,
-                        cancelable: true
-                    });
-                    el.dispatchEvent(clickEvent);
-                    
-                    // Trigger touch as well because mobile ads often listen to touchstart
-                    const touchEvent = new TouchEvent('touchstart', {
-                        bubbles: true,
-                        cancelable: true
-                    });
-                    el.dispatchEvent(touchEvent);
-                } catch (e) {}
-
-                return true;
-            };
-
-            for (const selector of closeSelectors) {
-                const elements = document.querySelectorAll(selector);
-                for (let i = 0; i < elements.length; i++) {
-                    if (triggerClick(elements[i])) {
-                        closed = true;
-                        break;
+                    // 1. Try to slice Iframe overlays which Monetag usually creates
+                    if (node.tagName === 'IFRAME') {
+                        // Monetag iframes are typically injected at the root level or in high Z-index containers
+                        node.style.display = 'none';
+                        node.remove();
+                        wiped = true;
                     }
-                }
-                if (closed) break;
-            }
 
-            if (!closed) {
-                // Second pass: target the specific "X" SVG or Path if it has no clear class
-                // Looking for SVGs in the top-right corner of the screen
-                const svgs = document.querySelectorAll('svg');
-                svgs.forEach(svg => {
-                    const rect = svg.getBoundingClientRect();
-                    // If the SVG represents a small cross in the top 20% right side of screen
-                    if (rect.width > 0 && rect.width < 50 && rect.top < window.innerHeight * 0.2 && rect.right > window.innerWidth * 0.8) {
-                         triggerClick(svg);
-                         closed = true;
+                    // 2. Scan massive divs that overlay the entire screen (usually the ad blocker shield)
+                    if (node.tagName === 'DIV' || node.tagName === 'SPAN') {
+                        const style = window.getComputedStyle(node);
+                        if ((style.position === 'fixed' || style.position === 'absolute') && parseInt(style.zIndex, 10) > 900) {
+                             if (node.innerText && (node.innerText.includes('Tap to proceed') || node.innerText.includes('ads by Monetag'))) {
+                                 node.remove();
+                                 wiped = true;
+                             } else if (node.offsetHeight > window.innerHeight * 0.5 && node.offsetWidth > window.innerWidth * 0.5) {
+                                 // It's a massive overlay shield
+                                  node.remove();
+                                  wiped = true;
+                             }
+                        }
                     }
                 });
+            });
+
+            if (wiped) {
+                console.log('🤖 Bot: Advanced DOM Mutation sliced an ad overlay!');
+                document.body.style.overflow = 'auto';
             }
-            
-            if (!closed) {
-                 // Third pass: text based 'X' fallback
-                 const allDivs = document.querySelectorAll('div, span, button');
-                 allDivs.forEach(el => {
-                     if (el.innerText === '✕' || el.innerText === 'X' || el.innerHTML.includes('✕')) {
-                         const rect = el.getBoundingClientRect();
-                         if (rect.top < 100 && rect.right > window.innerWidth - 100) {
-                             triggerClick(el);
-                         }
-                     }
-                 });
-                 
-                 // Fourth pass: Forcefully send synthetic Escape key, many ads listen for this
-                 try {
-                     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));
-                 } catch (e) {}
+        });
 
-                 // Fifth pass: Wipe cross-origin iframes or massive z-index overlays if they block the screen
-                 try {
-                     // Check ALL elements for fixed positioning taking up the whole screen, or text matching the ad
-                     const overlays = Array.from(document.querySelectorAll('*')).filter(el => {
-                         if (!el || !el.style) return false;
-                         const style = window.getComputedStyle(el);
-                         
-                         const isMassiveFixed = (style.position === 'fixed' || style.position === 'absolute') && 
-                                parseInt(style.zIndex, 10) >= 9000 &&
-                                el.offsetHeight > window.innerHeight * 0.5 && 
-                                el.offsetWidth > window.innerWidth * 0.5;
-
-                         // Specific text matching from the user screenshot "Click to get the reward!" or "Download is ready"
-                         const isAdText = el.innerText && (
-                            el.innerText.includes('Click to get the reward') ||
-                            el.innerText.includes('Download is ready') ||
-                            el.innerText.includes('ads by Monetag') ||
-                            el.innerText.includes('Tap to proceed')
-                         );
-
-                         // If it's a massive overlay OR contains the exact ad text, nuke it
-                         return isMassiveFixed || isAdText;
-                     });
-
-                     if (overlays.length > 0) {
-                         overlays.forEach(el => {
-                              console.log('🤖 Bot: Forcefully wiping Monetag ad layout element match...');
-                              el.remove();
-                              closed = true;
-                         });
-                         
-                         // As a final fail-safe, if we found and removed overlay elements, 
-                         // force document flow back to normal by removing standard block overlays on body
-                         document.body.style.overflow = 'auto';
-                         document.documentElement.style.overflow = 'auto';
-                     }
-                 } catch (e) {}
-            }
+        // Start observing the document body for injected elements
+        observer.observe(document.body, { childList: true, subtree: true });
+        
+        // Failsafe interval scanner just in case Monetag injected BEFORE the observer attached
+        const autoCloseAds = () => {
+             const svgs = document.querySelectorAll('svg');
+             svgs.forEach(svg => {
+                 const rect = svg.getBoundingClientRect();
+                 if (rect.width > 0 && rect.width < 50 && rect.top < window.innerHeight * 0.2 && rect.right > window.innerWidth * 0.8) {
+                     try {
+                         const evt = new MouseEvent('click', { view: window, bubbles: true, cancelable: true });
+                         svg.dispatchEvent(evt);
+                     } catch(e) {}
+                 }
+             });
         };
+        const interval = setInterval(autoCloseAds, 1000);
 
-        const interval = setInterval(autoCloseAds, 1000); // Check every 1s, much more aggressively
-        return () => clearInterval(interval);
+        return () => {
+            observer.disconnect();
+            clearInterval(interval);
+        };
     }, [isAutoMode]);
 
     // --- Inject AdSense ---
