@@ -111,7 +111,6 @@ const Home = () => {
         let isCancelled = false;
 
         if (!isAutoMode) {
-            // Restore admin token if we were botting
             if (originalAdminToken.current) {
                 console.log('🤖 Bot: Stopping. Restoring admin session...');
                 localStorage.setItem('token', originalAdminToken.current);
@@ -128,113 +127,86 @@ const Home = () => {
             isBotExecuting.current = true;
 
             try {
-                // Initialize Bot run for Admin
                 if (!originalAdminToken.current) {
                     originalAdminToken.current = localStorage.getItem('token');
-                    console.log('🤖 Bot: Fetching all users for automation loop...');
+                    console.log('🤖 Bot: Fetching all users for loop...');
                     const res = await api.get('/user/all-users');
                     allUsersForBot.current = res.data;
                     currentUserBotIdx.current = 0;
-                    if (!allUsersForBot.current.length) {
-                        console.log('🤖 Bot: No users found. Aborting.');
-                        return;
-                    }
+                    if (!allUsersForBot.current.length) return;
                 }
 
-                // Get current user to impersonate
                 const targetUser = allUsersForBot.current[currentUserBotIdx.current];
-                console.log(`\n🤖 Bot: ---- Switching to user ${targetUser.username} ----`);
+                console.log(`\n🤖 Bot: [USER ${currentUserBotIdx.current + 1}/100] Switching to ${targetUser.username}`);
                 
-                // Impersonate
                 localStorage.setItem('token', targetUser.token);
                 await fetchProfile(); 
                 
-                // Track Bot Login explicitly for Day-Wise Report
-                try {
-                    await api.post('/user/record-login');
-                } catch (e) {
-                    console.error('Bot failed saving login stat', e);
-                }
+                try { await api.post('/user/record-login'); } catch (e) {}
                 
-                await new Promise(r => setTimeout(r, 2000));
-
-                if (isCancelled) return;
-
-                // 1. Claim Daily Bonus
-                console.log(`🤖 Bot: Attempting daily bonus for ${targetUser.username}...`);
+                // --- Start 2-Minute (120s) Session ---
+                // 1. Daily Bonus (5s)
+                console.log('🤖 Bot: Step 1 - Daily Bonus');
                 await handleClaimBonus();
-                await new Promise(r => setTimeout(r, 2000));
-
+                await new Promise(r => setTimeout(r, 5000));
                 if (isCancelled) return;
 
-                // Helper to forcibly wipe ad overlays from the DOM (Failsafe)
                 const forceWipeAds = () => {
                      const badElements = document.querySelectorAll('iframe, .monetag-overlay, #monetag-shell');
                      badElements.forEach(el => el.remove());
                      document.body.style.overflow = 'auto';
                 };
 
-                // 2. Rewarded Interstitial
-                console.log(`🤖 Bot: Watching Interstitial Ad for ${targetUser.username}...`);
-                // Use the real handler for visual feedback in UI
+                // 2. Rewarded Interstitial (30s)
+                console.log('🤖 Bot: Step 2 - Rewarded Interstitial');
                 handleRewardedInterstitial();
-                
-                // Wait for the ad to play (15s) while the "botAdAssistant" tries to click buttons
-                await new Promise(r => setTimeout(r, 15000));
+                await new Promise(r => setTimeout(r, 30000));
                 forceWipeAds(); 
-                // handleRewardedInterstitial already calls claimAdReward on completion, 
-                // but if it hung, we ensure reward here
-                if (adStates.interstitial.loading) {
-                    await claimAdReward('interstitial', 50);
-                }
-                await new Promise(r => setTimeout(r, 2000));
-
+                await new Promise(r => setTimeout(r, 5000));
                 if (isCancelled) return;
 
-                // 3. Rewarded Popup
-                console.log(`🤖 Bot: Watching Popup Ad for ${targetUser.username}...`);
+                // 3. Rewarded Popup (30s)
+                console.log('🤖 Bot: Step 3 - Rewarded Popup');
                 handleRewardedPopup();
-                
-                await new Promise(r => setTimeout(r, 15000)); 
+                await new Promise(r => setTimeout(r, 30000)); 
                 forceWipeAds();
-                if (adStates.popup.loading) {
-                    await claimAdReward('popup', 50);
-                }
-                await new Promise(r => setTimeout(r, 2000));
-
+                await new Promise(r => setTimeout(r, 5000));
                 if (isCancelled) return;
 
-                // 4. Direct Link
-                console.log(`🤖 Bot: Visiting Direct Link for ${targetUser.username}...`);
-                await handleDirectLink();
-                await new Promise(r => setTimeout(r, 16000)); 
+                // 4. Direct Link (30s)
+                console.log('🤖 Bot: Step 4 - Direct Link');
+                handleDirectLink();
+                await new Promise(r => setTimeout(r, 30000)); 
+                if (isCancelled) return;
 
-                // Done with this user, move to next
+                // 5. Buffer / Final Session Wait (15s)
+                // Total so far: 5 + 35 + 35 + 30 = 105s. Adding 15s to reach 120s.
+                console.log('🤖 Bot: Step 5 - Completing 2-minute session...');
+                await new Promise(r => setTimeout(r, 15000));
+
                 currentUserBotIdx.current = (currentUserBotIdx.current + 1) % allUsersForBot.current.length;
-                console.log('🤖 Bot: Finished user cycle. Moving to next user...');
+                console.log(`🤖 Bot: Session complete for ${targetUser.username}. Moving to next...`);
 
             } catch (err) {
-                console.error('🤖 Bot: Cycle error:', err);
+                console.error('🤖 Bot: Error:', err);
                 if (allUsersForBot.current.length) {
                     currentUserBotIdx.current = (currentUserBotIdx.current + 1) % allUsersForBot.current.length;
                 }
             } finally {
                 isBotExecuting.current = false;
-                if (!isCancelled) {
-                    console.log('🤖 Bot: Preparing for next cycle...');
+                if (!isCancelled && isAutoMode) {
                     botTimeoutRef.current = setTimeout(runBotCycle, 3000);
                 }
             }
         };
 
         runBotCycle();
-
         return () => {
             isCancelled = true;
             if (botTimeoutRef.current) clearTimeout(botTimeoutRef.current);
             isBotExecuting.current = false;
         };
-    }, [isAutoMode, adStates.interstitial.loading, adStates.popup.loading]); // Added adStates to dependencies
+    }, [isAutoMode]); // Removed adStates to prevent restarts during cycle
 
     // --- Auto-Bot Ad Assistant (Clicker/Closer) ---
     useEffect(() => {
@@ -282,8 +254,11 @@ const Home = () => {
         return () => clearInterval(interval);
     }, [isAutoMode]);
 
-    // --- Inject AdSense ---
+    // --- Inject AdSense & Initialize Monetag In-App ---
     useEffect(() => {
+        // Initialize Monetag background ads
+        initInAppInterstitial();
+
         // Only inject if window.adsbygoogle is available and hasn't been pushed for these slots yet
         const pushAd = () => {
             try {
