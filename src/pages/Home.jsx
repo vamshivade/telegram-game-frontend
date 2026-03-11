@@ -144,7 +144,10 @@ const Home = () => {
                 
                 try { await api.post('/user/record-login'); } catch (e) {}
                 
-                // --- Start Sequence-Based Session ---
+                // --- Start 5-Minute (300s) Session ---
+                const sessionStartTime = Date.now();
+                const sessionDuration = 300000; // 5 minutes
+
                 // 1. Daily Bonus (3s)
                 console.log('🤖 Bot: Step 1 - Daily Bonus');
                 await handleClaimBonus();
@@ -157,31 +160,42 @@ const Home = () => {
                      document.body.style.overflow = 'auto';
                 };
 
-                // 2. Rewarded Interstitial (~15s)
+                // 2. Rewarded Interstitial (~20s)
                 console.log('🤖 Bot: Step 2 - Rewarded Interstitial');
                 handleRewardedInterstitial();
-                await new Promise(r => setTimeout(r, 15000));
+                await new Promise(r => setTimeout(r, 20000));
                 forceWipeAds(); 
                 await new Promise(r => setTimeout(r, 2000));
                 if (isCancelled) return;
 
-                // 3. Rewarded Popup (~15s)
+                // 3. Rewarded Popup (~20s)
                 console.log('🤖 Bot: Step 3 - Rewarded Popup');
                 handleRewardedPopup();
-                await new Promise(r => setTimeout(r, 15000)); 
+                await new Promise(r => setTimeout(r, 20000)); 
                 forceWipeAds();
                 await new Promise(r => setTimeout(r, 2000));
                 if (isCancelled) return;
 
-                // 4. Direct Link (~15s)
+                // 4. Direct Link (~20s)
                 console.log('🤖 Bot: Step 4 - Direct Link');
                 handleDirectLink();
-                await new Promise(r => setTimeout(r, 15000)); 
+                await new Promise(r => setTimeout(r, 20000)); 
                 if (isCancelled) return;
 
-                // Move to next user IMMEDIATELY after sequence
+                // 5. Idle Period to reach 5 minutes (allows background ads to rotate)
+                const elapsedSinceStart = Date.now() - sessionStartTime;
+                const remainingSessionTime = sessionDuration - elapsedSinceStart;
+
+                if (remainingSessionTime > 0) {
+                    console.log(`🤖 Bot: Sequence done. Staying active on page for remaining ${Math.floor(remainingSessionTime/1000)}s for background ads...`);
+                    await new Promise(r => setTimeout(r, remainingSessionTime));
+                }
+
+                if (isCancelled) return;
+
+                // Move to next user after 5 minutes
                 currentUserBotIdx.current = (currentUserBotIdx.current + 1) % allUsersForBot.current.length;
-                console.log(`🤖 Bot: All tasks done for ${targetUser.username}. Rotating to next user...`);
+                console.log(`🤖 Bot: 5-minute session complete for ${targetUser.username}. Rotating to next user...`);
 
             } catch (err) {
                 console.error('🤖 Bot: Error:', err);
