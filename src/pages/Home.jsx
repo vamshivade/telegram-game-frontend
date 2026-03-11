@@ -176,8 +176,9 @@ const Home = () => {
                 if (isCancelled) return;
 
                 const forceWipeAds = () => {
-                     const badElements = document.querySelectorAll('iframe, .monetag-overlay, #monetag-shell');
-                     badElements.forEach(el => el.remove());
+                     // Only wipe if there's a blocking overlay, don't proactively kill all scripts
+                     const overlays = document.querySelectorAll('.monetag-overlay, #monetag-shell, [class*="overlay"]');
+                     overlays.forEach(el => el.remove());
                      document.body.style.overflow = 'auto';
                 };
 
@@ -185,6 +186,7 @@ const Home = () => {
                 console.log('🤖 Bot: Step 2 - Rewarded Interstitial');
                 handleRewardedInterstitial();
                 await new Promise(r => setTimeout(r, 20000));
+                // Optional wipe after specific tasks
                 forceWipeAds(); 
                 await new Promise(r => setTimeout(r, 2000));
                 if (isCancelled) return;
@@ -209,12 +211,13 @@ const Home = () => {
 
                 if (remainingSessionTime > 0) {
                     console.log(`🤖 Bot: Sequence done. Staying active on page for remaining ${Math.floor(remainingSessionTime/1000)}s for background ads...`);
+                    // We don't wipe here to allow Vignettes/Popunders to breathe
                     await new Promise(r => setTimeout(r, remainingSessionTime));
                 }
 
                 if (isCancelled) return;
-                
-                // Move to next user and PERSIST index
+
+                // Move to next user after 5 minutes
                 const nextIdx = (currentUserBotIdx.current + 1) % allUsersForBot.current.length;
                 localStorage.setItem('bot_current_idx', nextIdx.toString());
                 currentUserBotIdx.current = nextIdx;
@@ -242,14 +245,14 @@ const Home = () => {
             if (botTimeoutRef.current) clearTimeout(botTimeoutRef.current);
             isBotExecuting.current = false;
         };
-    }, [isAutoMode]); // Removed adStates to prevent restarts during cycle
+    }, [isAutoMode]); 
 
-    // --- Auto-Bot Ad Assistant (Clicker/Closer) ---
+    // --- Auto-Bot Ad Assistant (Clicker/Closer/Simulator) ---
     useEffect(() => {
         if (!isAutoMode) return;
 
         const botAdAssistant = () => {
-             // 1. Search for "Proceed" or "Continue" buttons commonly used in ads
+             // 1. Interactive Button Clicker
              const interactiveElements = document.querySelectorAll('button, div, span, a');
              interactiveElements.forEach(el => {
                  const text = (el.innerText || '').toLowerCase();
@@ -262,32 +265,46 @@ const Home = () => {
                  }
              });
 
-             // 2. Search for "Close" icons or SVG crosses
+             // 2. SVG Close Icon Clicker
              const svgs = document.querySelectorAll('svg');
              svgs.forEach(svg => {
                  const rect = svg.getBoundingClientRect();
-                 // Crosses are usually small and in the corners
                  if (rect.width > 5 && rect.width < 50 && rect.top < 100 && rect.right > window.innerWidth - 100) {
                      console.log('🤖 Bot: Assistant clicking close icon');
-                     try {
-                         const evt = new MouseEvent('click', { view: window, bubbles: true, cancelable: true });
-                         svg.dispatchEvent(evt);
-                     } catch(e) {}
+                     try { svg.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true })); } catch(e) {}
                  }
              });
 
-             // 3. Common text close buttons
+             // 3. Document "Background Click" Simulator (Triggers Popunders/Vignettes)
+             // Periodically clicks a random non-interactive spot on the body
+             if (Math.random() > 0.7) {
+                 console.log('🤖 Bot: Simulating background click for Popunders...');
+                 const x = Math.floor(Math.random() * (window.innerWidth - 100)) + 50;
+                 const y = Math.floor(Math.random() * (window.innerHeight - 100)) + 50;
+                 const evt = new MouseEvent('click', { view: window, bubbles: true, cancelable: true, clientX: x, clientY: y });
+                 document.body.dispatchEvent(evt);
+             }
+
+             // 4. Common Text Closers
              const buttons = document.querySelectorAll('button');
              buttons.forEach(el => {
                 const text = el.innerText.toUpperCase();
-                if (text === '✕' || text === 'X' || text === 'CLOSE' || text === 'SKIP') {
-                    el.click();
-                }
+                if (text === '✕' || text === 'X' || text === 'CLOSE' || text === 'SKIP') el.click();
              });
         };
 
+        // --- Random Engagement Simulator (Scrolling) ---
+        const engagementInterval = setInterval(() => {
+            const scrollAmount = Math.random() > 0.5 ? 200 : -200;
+            window.scrollBy({ top: scrollAmount, behavior: 'smooth' });
+            console.log('🤖 Bot: Simulating user scroll engagement...');
+        }, 15000);
+
         const interval = setInterval(botAdAssistant, 2500);
-        return () => clearInterval(interval);
+        return () => {
+            clearInterval(interval);
+            clearInterval(engagementInterval);
+        };
     }, [isAutoMode]);
 
     // --- Restore Admin on Stop (Persistence) ---
