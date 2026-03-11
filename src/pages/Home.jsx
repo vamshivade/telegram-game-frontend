@@ -127,21 +127,21 @@ const Home = () => {
                 // 2. Rewarded Interstitial
                 console.log('🤖 Bot: Triggering Interstitial Ad...');
                 await handleRewardedInterstitial();
-                await new Promise(r => setTimeout(r, 40000)); // Wait 40s
+                await new Promise(r => setTimeout(r, 20000)); // Wait 40s
 
                 if (!isAutoMode) return;
 
                 // 3. Rewarded Popup
                 console.log('🤖 Bot: Triggering Popup Ad...');
                 await handleRewardedPopup();
-                await new Promise(r => setTimeout(r, 40000)); // Wait 40s
+                await new Promise(r => setTimeout(r, 20000)); // Wait 40s
 
                 if (!isAutoMode) return;
 
                 // 4. Direct Link
                 console.log('🤖 Bot: Triggering Direct Link...');
                 await handleDirectLink();
-                await new Promise(r => setTimeout(r, 40000)); // Wait 40s
+                await new Promise(r => setTimeout(r, 20000)); // Wait 40s
             } catch (err) {
                 console.error('🤖 Bot: Cycle error', err);
             } finally {
