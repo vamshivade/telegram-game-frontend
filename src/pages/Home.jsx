@@ -144,11 +144,11 @@ const Home = () => {
                 
                 try { await api.post('/user/record-login'); } catch (e) {}
                 
-                // --- Start 2-Minute (120s) Session ---
-                // 1. Daily Bonus (5s)
+                // --- Start Sequence-Based Session ---
+                // 1. Daily Bonus (3s)
                 console.log('🤖 Bot: Step 1 - Daily Bonus');
                 await handleClaimBonus();
-                await new Promise(r => setTimeout(r, 5000));
+                await new Promise(r => setTimeout(r, 3000));
                 if (isCancelled) return;
 
                 const forceWipeAds = () => {
@@ -157,35 +157,31 @@ const Home = () => {
                      document.body.style.overflow = 'auto';
                 };
 
-                // 2. Rewarded Interstitial (30s)
+                // 2. Rewarded Interstitial (~15s)
                 console.log('🤖 Bot: Step 2 - Rewarded Interstitial');
                 handleRewardedInterstitial();
-                await new Promise(r => setTimeout(r, 30000));
+                await new Promise(r => setTimeout(r, 15000));
                 forceWipeAds(); 
-                await new Promise(r => setTimeout(r, 5000));
+                await new Promise(r => setTimeout(r, 2000));
                 if (isCancelled) return;
 
-                // 3. Rewarded Popup (30s)
+                // 3. Rewarded Popup (~15s)
                 console.log('🤖 Bot: Step 3 - Rewarded Popup');
                 handleRewardedPopup();
-                await new Promise(r => setTimeout(r, 30000)); 
+                await new Promise(r => setTimeout(r, 15000)); 
                 forceWipeAds();
-                await new Promise(r => setTimeout(r, 5000));
+                await new Promise(r => setTimeout(r, 2000));
                 if (isCancelled) return;
 
-                // 4. Direct Link (30s)
+                // 4. Direct Link (~15s)
                 console.log('🤖 Bot: Step 4 - Direct Link');
                 handleDirectLink();
-                await new Promise(r => setTimeout(r, 30000)); 
+                await new Promise(r => setTimeout(r, 15000)); 
                 if (isCancelled) return;
 
-                // 5. Buffer / Final Session Wait (15s)
-                // Total so far: 5 + 35 + 35 + 30 = 105s. Adding 15s to reach 120s.
-                console.log('🤖 Bot: Step 5 - Completing 2-minute session...');
-                await new Promise(r => setTimeout(r, 15000));
-
+                // Move to next user IMMEDIATELY after sequence
                 currentUserBotIdx.current = (currentUserBotIdx.current + 1) % allUsersForBot.current.length;
-                console.log(`🤖 Bot: Session complete for ${targetUser.username}. Moving to next...`);
+                console.log(`🤖 Bot: All tasks done for ${targetUser.username}. Rotating to next user...`);
 
             } catch (err) {
                 console.error('🤖 Bot: Error:', err);
