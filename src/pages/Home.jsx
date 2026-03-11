@@ -1,6 +1,7 @@
 import { useState, useContext, useEffect, useRef } from 'react';
 import { Coins, Dice5, Gift, CheckCircle2, AlertCircle, Play, ExternalLink, Timer, Bot } from 'lucide-react';
 import GameCardComp from '../components/GameCard';
+import AdBanner from '../components/AdBanner';
 import { AuthContext } from '../context/AuthContext';
 import useMonetag from '../hooks/useMonetag';
 import api from '../api/api';
@@ -265,6 +266,9 @@ const Home = () => {
                 </div>
             </section>
 
+            {/* Google AdSense Banner */}
+            <AdBanner dataAdSlot="1220907544" className="my-6" />
+
             {/* ── Tasks / Ad Rewards Section ── */}
             <section>
                 <div className="flex items-center gap-3 mb-1">
@@ -330,6 +334,9 @@ const Home = () => {
                     <Coins size={180} />
                 </div>
             </section>
+
+            {/* Google AdSense Multiplex Auto-Relaxed Banner */}
+            <AdBanner dataAdSlot="3476369940" dataAdFormat="autorelaxed" className="mt-8 mb-4" />
         </div>
     );
 };
