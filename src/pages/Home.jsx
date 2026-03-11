@@ -12,9 +12,10 @@ const Home = () => {
     const [claiming, setClaiming] = useState(false);
     const [message, setMessage] = useState(null);
     const [adStates, setAdStates] = useState({
-        interstitial: { loading: false, message: null },
-        popup: { loading: false, message: null },
-        direct: { loading: false, message: null },
+        isPlayingAll: false,
+        currentAd: null, // 'interstitial', 'popup', 'direct', or null
+        loading: false,
+        message: null,
     });
 
     const botTimeoutRef = useRef(null);
@@ -39,66 +40,60 @@ const Home = () => {
     };
 
     // --- Ad helpers ---
-    const setAdState = (key, state) => {
-        setAdStates(prev => ({ ...prev, [key]: { ...prev[key], ...state } }));
-    };
-
-    const claimAdReward = async (adKey, rewardAmount = 50) => {
+    const claimAdReward = async (adName, rewardAmount = 50) => {
         try {
             await api.post('/user/ad-reward', { amount: rewardAmount });
         } catch {
-            // If endpoint missing, ignore — reward still shown to user
+            // Ignore error
         }
         fetchProfile();
-        setAdState(adKey, {
-            loading: false,
-            message: { text: `+${rewardAmount} coins earned! 🎉`, type: 'success' }
-        });
-        setTimeout(() => setAdState(adKey, { message: null }), 4000);
+        setAdStates(prev => ({
+            ...prev,
+            message: { text: `+${rewardAmount} coins earned from ${adName}! 🎉`, type: 'success' }
+        }));
     };
 
-    // --- Rewarded Interstitial ---
-    const handleRewardedInterstitial = async () => {
-        setAdState('interstitial', { loading: true, message: null });
-        await showRewardedInterstitial(() => claimAdReward('interstitial', 50));
-        setAdStates(prev =>
-            prev.interstitial.loading
-                ? { ...prev, interstitial: { loading: false, message: null } }
-                : prev
-        );
-    };
-
-    // --- Rewarded Popup ---
-    const handleRewardedPopup = async () => {
-        setAdState('popup', { loading: true, message: null });
-        await showRewardedPopup(
-            () => claimAdReward('popup', 50),
-            () => {
-                setAdState('popup', {
-                    loading: false,
-                    message: { text: 'Ad unavailable. Try again later.', type: 'error' }
-                });
-                setTimeout(() => setAdState('popup', { message: null }), 3000);
+    // --- Play All Ads Sequence ---
+    const handlePlayAllAds = async () => {
+        if (adStates.isPlayingAll) return;
+        
+        setAdStates({ isPlayingAll: true, currentAd: 'interstitial', loading: true, message: null });
+        
+        try {
+            // 1. Rewarded Interstitial
+            await showRewardedInterstitial(() => claimAdReward('Interstitial Ad', 50));
+            
+            setAdStates(prev => ({ ...prev, currentAd: 'waiting', message: { text: 'Waiting 40s for next ad...', type: 'success' } }));
+            await new Promise(r => setTimeout(r, 40000)); // 40 seconds delay
+            
+            // 2. Rewarded Popup
+            setAdStates(prev => ({ ...prev, currentAd: 'popup', message: { text: 'Playing Popup Ad...', type: 'success' } }));
+            await showRewardedPopup(
+                () => claimAdReward('Popup Ad', 50),
+                () => console.log('Popup ad not available')
+            );
+            
+            setAdStates(prev => ({ ...prev, currentAd: 'waiting', message: { text: 'Waiting 40s for next ad...', type: 'success' } }));
+            await new Promise(r => setTimeout(r, 40000)); // 40 seconds delay
+            
+            // 3. Direct Link
+            setAdStates(prev => ({ ...prev, currentAd: 'direct', message: { text: 'Opening Direct Link...', type: 'success' } }));
+            const win = window.open('https://omg10.com/4/10710196', '_blank');
+            if (win) {
+                win.blur();
+                window.focus();
             }
-        );
-        setAdStates(prev =>
-            prev.popup.loading
-                ? { ...prev, popup: { loading: false, message: null } }
-                : prev
-        );
-    };
-
-    // --- Direct Link ---
-    const handleDirectLink = async () => {
-        setAdState('direct', { loading: true, message: null });
-        // Open the direct link in a new tab
-        const win = window.open('https://omg10.com/4/10710196', '_blank');
-        if (win) win.blur(); // Try to keep focus on app for bot
-        window.focus();
-
-        // Give some time for the user to visit before claiming
-        await new Promise(r => setTimeout(r, 2000));
-        await claimAdReward('direct', 50);
+            await new Promise(r => setTimeout(r, 2000)); // Wait for visit
+            await claimAdReward('Direct Link', 50);
+            
+            setAdStates({ isPlayingAll: false, currentAd: null, loading: false, message: { text: 'All ads completed! 🎉', type: 'success' } });
+            setTimeout(() => setAdStates(prev => ({ ...prev, message: null })), 5000);
+            
+        } catch (error) {
+            console.error('Error in Play All Ads sequence:', error);
+            setAdStates({ isPlayingAll: false, currentAd: null, loading: false, message: { text: 'Ads sequence interrupted.', type: 'error' } });
+            setTimeout(() => setAdStates(prev => ({ ...prev, message: null })), 5000);
+        }
     };
 
     // --- Auto-Bot Logic ---
@@ -281,107 +276,36 @@ const Home = () => {
                 <p className="text-gray-500 text-sm mb-5">Get rewards for actions</p>
 
                 <div className="space-y-3">
-                    {/* Rewarded Interstitial */}
-                    <div className="bg-white/5 border border-white/8 rounded-2xl p-4 flex items-center justify-between gap-4 hover:bg-white/[0.08] transition-all">
-                        <div className="flex items-center gap-4">
-                            <div className="text-3xl select-none">🤑</div>
-                            <div>
-                                <p className="font-bold text-white text-sm">Watch Short Ad</p>
-                                <p className="text-gray-500 text-xs mt-0.5">Rewarded Interstitial · +50 coins</p>
-                            </div>
+                    <div className="bg-white/5 border border-white/8 rounded-2xl p-6 flex flex-col items-center justify-center gap-4 hover:bg-white/[0.08] transition-all text-center">
+                        <div className="text-4xl mb-2 select-none">🍿</div>
+                        <div>
+                            <p className="font-bold text-white text-lg">Watch All Ads Automatically</p>
+                            <p className="text-gray-400 text-sm mt-1 max-w-sm mx-auto">Click once to play all 3 available ad types in sequence. A 40-second rest period happens between ads so you don't have to keep clicking.</p>
                         </div>
-                        <div className="flex flex-col items-end gap-1.5 shrink-0">
+                        
+                        <div className="mt-4 flex flex-col items-center gap-3">
                             <button
-                                id="btn-rewarded-interstitial"
-                                onClick={handleRewardedInterstitial}
-                                disabled={adStates.interstitial.loading}
-                                className="bg-yellow-500 hover:bg-yellow-400 disabled:opacity-60 text-black font-black text-sm px-5 py-2 rounded-xl transition-all active:scale-95 flex items-center gap-1.5 shadow-md shadow-yellow-500/20"
+                                onClick={handlePlayAllAds}
+                                disabled={adStates.isPlayingAll}
+                                className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-400 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black text-lg px-8 py-3 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20 w-full sm:w-auto min-w-[200px]"
                             >
-                                {adStates.interstitial.loading ? (
-                                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-black/30 border-t-black" />
+                                {adStates.isPlayingAll ? (
+                                    <>
+                                        <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white" />
+                                        <span>{adStates.currentAd === 'waiting' ? 'Waiting 40s...' : 'Ad sequence running...'}</span>
+                                    </>
                                 ) : (
-                                    <><Play size={13} fill="currentColor" /> Claim</>
+                                    <>
+                                        <Play fill="currentColor" size={18} />
+                                        <span>Play All Ads (+150 coins)</span>
+                                    </>
                                 )}
                             </button>
-                            {adStates.interstitial.message && (
-                                <span className={`text-xs font-bold animate-in fade-in ${adStates.interstitial.message.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
-                                    {adStates.interstitial.message.text}
-                                </span>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Rewarded Popup */}
-                    <div className="bg-white/5 border border-white/8 rounded-2xl p-4 flex items-center justify-between gap-4 hover:bg-white/[0.08] transition-all">
-                        <div className="flex items-center gap-4">
-                            <div className="text-3xl select-none">😎</div>
-                            <div>
-                                <p className="font-bold text-white text-sm">Click to Get Reward</p>
-                                <p className="text-gray-500 text-xs mt-0.5">Rewarded Popup · +50 coins</p>
-                            </div>
-                        </div>
-                        <div className="flex flex-col items-end gap-1.5 shrink-0">
-                            <button
-                                id="btn-rewarded-popup"
-                                onClick={handleRewardedPopup}
-                                disabled={adStates.popup.loading}
-                                className="bg-green-500 hover:bg-green-400 disabled:opacity-60 text-black font-black text-sm px-5 py-2 rounded-xl transition-all active:scale-95 flex items-center gap-1.5 shadow-md shadow-green-500/20"
-                            >
-                                {adStates.popup.loading ? (
-                                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-black/30 border-t-black" />
-                                ) : (
-                                    <><ExternalLink size={13} /> Claim</>
-                                )}
-                            </button>
-                            {adStates.popup.message && (
-                                <span className={`text-xs font-bold animate-in fade-in ${adStates.popup.message.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
-                                    {adStates.popup.message.text}
-                                </span>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* In-App Interstitial — auto-triggered, no button */}
-                    <div className="bg-white/5 border border-white/8 rounded-2xl p-4 flex items-center justify-between gap-4 opacity-60">
-                        <div className="flex items-center gap-4">
-                            <div className="text-3xl select-none">👀</div>
-                            <div>
-                                <p className="font-bold text-white text-sm">Watch Video</p>
-                                <p className="text-gray-500 text-xs mt-0.5">In-App Interstitial · Auto-shown daily</p>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-2 text-gray-500 text-xs font-bold">
-                            <Timer size={14} />
-                            <span>Auto</span>
-                        </div>
-                    </div>
-
-                    {/* Direct Link */}
-                    <div className="bg-white/5 border border-white/8 rounded-2xl p-4 flex items-center justify-between gap-4 hover:bg-white/[0.08] transition-all border-dashed border-yellow-500/30">
-                        <div className="flex items-center gap-4">
-                            <div className="text-3xl select-none">🔥</div>
-                            <div>
-                                <p className="font-bold text-white text-sm">Special Reward</p>
-                                <p className="text-gray-500 text-xs mt-0.5">Direct Link · +50 coins</p>
-                            </div>
-                        </div>
-                        <div className="flex flex-col items-end gap-1.5 shrink-0">
-                            <button
-                                id="btn-direct-link"
-                                onClick={handleDirectLink}
-                                disabled={adStates.direct.loading}
-                                className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-400 hover:to-red-400 disabled:opacity-60 text-white font-black text-sm px-5 py-2 rounded-xl transition-all active:scale-95 flex items-center gap-1.5 shadow-md shadow-orange-500/20"
-                            >
-                                {adStates.direct.loading ? (
-                                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white" />
-                                ) : (
-                                    <><ExternalLink size={13} /> Open</>
-                                )}
-                            </button>
-                            {adStates.direct.message && (
-                                <span className={`text-xs font-bold animate-in fade-in ${adStates.direct.message.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
-                                    {adStates.direct.message.text}
-                                </span>
+                            
+                            {adStates.message && (
+                                <div className={`text-sm font-bold animate-in fade-in slide-in-from-top-2 ${adStates.message.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+                                    {adStates.message.text}
+                                </div>
                             )}
                         </div>
                     </div>
