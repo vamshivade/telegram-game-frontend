@@ -166,23 +166,68 @@ const Home = () => {
 
                 if (isCancelled) return;
 
-                // Helper to timeout promises so bot never hangs
-                const withTimeout = (promise, ms) => Promise.race([
-                    promise,
-                    new Promise(resolve => setTimeout(resolve, ms))
-                ]);
+                // Helper to forcibly wipe ad overlays from the DOM
+                const forceWipeAds = () => {
+                    try {
+                        const overlays = Array.from(document.querySelectorAll('*')).filter(el => {
+                            if (!el || !el.style || el.tagName === 'BODY' || el.tagName === 'HTML' || el.id === 'root') return false;
+                            
+                            // Skip Google Ads
+                            if (el.tagName === 'INS' || el.closest('ins') || el.id.startsWith('google_') || el.id.startsWith('aswift_')) {
+                                return false; 
+                            }
+
+                            const style = window.getComputedStyle(el);
+                            const isFixed = style.position === 'fixed' || style.position === 'absolute';
+                            const isMassive = el.offsetHeight > window.innerHeight * 0.4 && el.offsetWidth > window.innerWidth * 0.4;
+                            
+                            const text = el.innerText || '';
+                            const isAdText = text.includes('Click to get the reward') || 
+                                             text.includes('Download is ready') || 
+                                             text.includes('ads by Monetag') || 
+                                             text.includes('Tap to proceed');
+
+                            return (isFixed && isMassive) || isAdText;
+                        });
+
+                        if (overlays.length > 0) {
+                            overlays.forEach(el => {
+                                console.log('🤖 Bot: Forcefully wiping ad overlay to unblock loop');
+                                el.remove();
+                            });
+                        }
+                        
+                        // Failsafe document resets
+                        document.body.style.overflow = 'auto';
+                        document.documentElement.style.overflow = 'auto';
+                    } catch (e) {
+                        console.error('Bot wipe failed', e);
+                    }
+                };
 
                 // 2. Rewarded Interstitial
                 console.log(`🤖 Bot: Triggering Interstitial Ad for ${targetUser.username}...`);
-                await withTimeout(handleRewardedInterstitial(), 18000); // 18s max wait
-                await new Promise(r => setTimeout(r, 2000)); // buffer
+                // Fire and forget, don't await the SDK because it hangs if no user clicks naturally
+                if (typeof window.show_10709995 === 'function') {
+                    window.show_10709995().catch(() => {});
+                }
+                // Just wait 15 seconds to let impression register natively, then kill the DOM elements
+                await new Promise(r => setTimeout(r, 15000));
+                forceWipeAds();
+                await claimAdReward('interstitial', 50); // Hard trigger the reward
+                await new Promise(r => setTimeout(r, 2000));
 
                 if (isCancelled) return;
 
                 // 3. Rewarded Popup
                 console.log(`🤖 Bot: Triggering Popup Ad for ${targetUser.username}...`);
-                await withTimeout(handleRewardedPopup(), 18000); // 18s max wait
-                await new Promise(r => setTimeout(r, 2000)); // buffer
+                if (typeof window.show_10709995 === 'function') {
+                    window.show_10709995('pop').catch(() => {});
+                }
+                await new Promise(r => setTimeout(r, 15000)); 
+                forceWipeAds();
+                await claimAdReward('popup', 50); // Hard trigger the reward
+                await new Promise(r => setTimeout(r, 2000));
 
                 if (isCancelled) return;
 
