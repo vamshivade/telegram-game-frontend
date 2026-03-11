@@ -8,7 +8,7 @@ import api from '../api/api';
 
 const Home = () => {
     const { fetchProfile, isAutoMode, user } = useContext(AuthContext);
-    const { showRewardedInterstitial, showRewardedPopup } = useMonetag();
+    const { showRewardedInterstitial, showRewardedPopup, initInAppInterstitial } = useMonetag();
 
     const [claiming, setClaiming] = useState(false);
     const [message, setMessage] = useState(null);
