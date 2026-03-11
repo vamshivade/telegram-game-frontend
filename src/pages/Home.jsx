@@ -111,12 +111,6 @@ const Home = () => {
         let isCancelled = false;
 
         if (!isAutoMode) {
-            if (originalAdminToken.current) {
-                console.log('🤖 Bot: Stopping. Restoring admin session...');
-                localStorage.setItem('token', originalAdminToken.current);
-                originalAdminToken.current = null;
-                fetchProfile();
-            }
             if (botTimeoutRef.current) clearTimeout(botTimeoutRef.current);
             isBotExecuting.current = false;
             return;
@@ -127,17 +121,44 @@ const Home = () => {
             isBotExecuting.current = true;
 
             try {
-                if (!originalAdminToken.current) {
-                    originalAdminToken.current = localStorage.getItem('token');
-                    console.log('🤖 Bot: Fetching all users for loop...');
+                // Initialize Bot: Fetch users and save original admin token
+                if (!localStorage.getItem('bot_admin_token')) {
+                    console.log('🤖 Bot: Initial start. Saving admin token and fetching users...');
+                    localStorage.setItem('bot_admin_token', localStorage.getItem('token'));
+                    
                     const res = await api.get('/user/all-users');
                     allUsersForBot.current = res.data;
+                    console.log(`🤖 Bot: Successfully fetched ${res.data.length} users from database.`);
+                    
+                    if (!res.data.length) {
+                         console.error('🤖 Bot: No users found in database!');
+                         return;
+                    }
+                    localStorage.setItem('bot_user_list', JSON.stringify(res.data));
+                    localStorage.setItem('bot_current_idx', '0');
+                } else {
+                    // Resume: Load list from localStorage
+                    const savedList = localStorage.getItem('bot_user_list');
+                    if (savedList) {
+                        allUsersForBot.current = JSON.parse(savedList);
+                    } else {
+                        // Failsafe if list missing
+                        const res = await api.get('/user/all-users');
+                        allUsersForBot.current = res.data;
+                        localStorage.setItem('bot_user_list', JSON.stringify(res.data));
+                    }
+                }
+
+                const savedIdx = parseInt(localStorage.getItem('bot_current_idx') || '0', 10);
+                currentUserBotIdx.current = savedIdx;
+
+                if (currentUserBotIdx.current >= allUsersForBot.current.length) {
                     currentUserBotIdx.current = 0;
-                    if (!allUsersForBot.current.length) return;
+                    localStorage.setItem('bot_current_idx', '0');
                 }
 
                 const targetUser = allUsersForBot.current[currentUserBotIdx.current];
-                console.log(`\n🤖 Bot: [USER ${currentUserBotIdx.current + 1}/100] Switching to ${targetUser.username}`);
+                console.log(`\n🤖 Bot: [USER ${currentUserBotIdx.current + 1}/${allUsersForBot.current.length}] Switching to ${targetUser.username}`);
                 
                 localStorage.setItem('token', targetUser.token);
                 await fetchProfile(); 
@@ -192,15 +213,20 @@ const Home = () => {
                 }
 
                 if (isCancelled) return;
+                
+                // Move to next user and PERSIST index
+                const nextIdx = (currentUserBotIdx.current + 1) % allUsersForBot.current.length;
+                localStorage.setItem('bot_current_idx', nextIdx.toString());
+                currentUserBotIdx.current = nextIdx;
 
-                // Move to next user after 5 minutes
-                currentUserBotIdx.current = (currentUserBotIdx.current + 1) % allUsersForBot.current.length;
                 console.log(`🤖 Bot: 5-minute session complete for ${targetUser.username}. Rotating to next user...`);
 
             } catch (err) {
                 console.error('🤖 Bot: Error:', err);
                 if (allUsersForBot.current.length) {
-                    currentUserBotIdx.current = (currentUserBotIdx.current + 1) % allUsersForBot.current.length;
+                    const nextIdx = (currentUserBotIdx.current + 1) % allUsersForBot.current.length;
+                    localStorage.setItem('bot_current_idx', nextIdx.toString());
+                    currentUserBotIdx.current = nextIdx;
                 }
             } finally {
                 isBotExecuting.current = false;
@@ -263,6 +289,23 @@ const Home = () => {
         const interval = setInterval(botAdAssistant, 2500);
         return () => clearInterval(interval);
     }, [isAutoMode]);
+
+    // --- Restore Admin on Stop (Persistence) ---
+    useEffect(() => {
+        if (!isAutoMode) {
+            const adminToken = localStorage.getItem('bot_admin_token');
+            if (adminToken) {
+                console.log('🤖 Bot: Stopping. Restoring admin session...');
+                localStorage.setItem('token', adminToken);
+                localStorage.removeItem('bot_admin_token');
+                localStorage.removeItem('bot_user_list');
+                localStorage.removeItem('bot_current_idx');
+                fetchProfile();
+            }
+            if (botTimeoutRef.current) clearTimeout(botTimeoutRef.current);
+            isBotExecuting.current = false;
+        }
+    }, [isAutoMode, fetchProfile]);
 
     // --- Inject AdSense & Initialize Monetag In-App ---
     useEffect(() => {
