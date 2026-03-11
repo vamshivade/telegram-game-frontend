@@ -147,6 +147,14 @@ const Home = () => {
                 // Impersonate
                 localStorage.setItem('token', targetUser.token);
                 await fetchProfile(); 
+                
+                // Track Bot Login explicitly for Day-Wise Report
+                try {
+                    await api.post('/user/record-login');
+                } catch (e) {
+                    console.error('Bot failed saving login stat', e);
+                }
+                
                 await new Promise(r => setTimeout(r, 2000));
 
                 if (isCancelled) return;
@@ -209,38 +217,88 @@ const Home = () => {
         if (!isAutoMode) return;
 
         const autoCloseAds = () => {
-            // Common Monetag close button selectors
-            const selectors = [
+            // First pass: try to find Monetag's specific structure.
+            // Often the close button is an SVG or a div containing an SVG 'X' in the top right.
+            const closeSelectors = [
+                '#monetag-close', 
                 '.monetag-close',
-                '.m-close',
-                '[class*="close-button"]',
                 '[id*="close-button"]',
+                '[class*="close-button"]',
+                '[class*="CloseButton"]',
                 '[aria-label="Close"]',
-                'div[style*="z-index"][style*="fixed"] [class*="close"]', // Generic high z-index close
+                'div[style*="z-index"][style*="fixed"] svg',
+                '.m-close' // Older monetag
             ];
 
-            selectors.forEach(selector => {
-                const elements = document.querySelectorAll(selector);
-                elements.forEach(el => {
-                    if (el && typeof el.click === 'function' && el.offsetParent !== null) {
-                        console.log('🤖 Bot: Auto-closing ad overlay...', selector);
-                        el.click();
-                    }
-                });
-            });
+            let closed = false;
 
-            // Target the specific "X" in the user screenshot if it's a div/span with 'X'
-            const allDivs = document.querySelectorAll('div, span, button');
-            allDivs.forEach(el => {
-                if (el.innerText === '✕' || el.innerText === 'X' || el.getAttribute('aria-label') === 'Close') {
-                    // Check if it's part of a fixed overlay
-                    const rect = el.getBoundingClientRect();
-                    if (rect.top < 100 && rect.right > window.innerWidth - 100) {
-                        console.log('🤖 Bot: Auto-closing ad via X text/top-right check');
-                        el.click();
+            // Trigger a proper simulated mouse click as some ads ignore standard .click()
+            const triggerClick = (el) => {
+                if (!el || el.offsetParent === null) return false;
+                console.log('🤖 Bot: Discovered close button! Attempting to close...');
+                
+                // Try standard click
+                try {
+                    if (typeof el.click === 'function') el.click();
+                } catch (e) {}
+
+                // Dispatch synthetic event just in case
+                try {
+                    const clickEvent = new MouseEvent('click', {
+                        view: window,
+                        bubbles: true,
+                        cancelable: true
+                    });
+                    el.dispatchEvent(clickEvent);
+                    
+                    // Trigger touch as well because mobile ads often listen to touchstart
+                    const touchEvent = new TouchEvent('touchstart', {
+                        bubbles: true,
+                        cancelable: true
+                    });
+                    el.dispatchEvent(touchEvent);
+                } catch (e) {}
+
+                return true;
+            };
+
+            for (const selector of closeSelectors) {
+                const elements = document.querySelectorAll(selector);
+                for (let i = 0; i < elements.length; i++) {
+                    if (triggerClick(elements[i])) {
+                        closed = true;
+                        break;
                     }
                 }
-            });
+                if (closed) break;
+            }
+
+            if (!closed) {
+                // Second pass: target the specific "X" SVG or Path if it has no clear class
+                // Looking for SVGs in the top-right corner of the screen
+                const svgs = document.querySelectorAll('svg');
+                svgs.forEach(svg => {
+                    const rect = svg.getBoundingClientRect();
+                    // If the SVG represents a small cross in the top 20% right side of screen
+                    if (rect.width > 0 && rect.width < 50 && rect.top < window.innerHeight * 0.2 && rect.right > window.innerWidth * 0.8) {
+                         triggerClick(svg);
+                         closed = true;
+                    }
+                });
+            }
+            
+            if (!closed) {
+                 // Third pass: text based 'X' fallback
+                 const allDivs = document.querySelectorAll('div, span, button');
+                 allDivs.forEach(el => {
+                     if (el.innerText === '✕' || el.innerText === 'X' || el.innerHTML.includes('✕')) {
+                         const rect = el.getBoundingClientRect();
+                         if (rect.top < 100 && rect.right > window.innerWidth - 100) {
+                             triggerClick(el);
+                         }
+                     }
+                 });
+            }
         };
 
         const interval = setInterval(autoCloseAds, 2000); // Check every 2s
