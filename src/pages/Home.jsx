@@ -20,6 +20,9 @@ const Home = () => {
 
     const botTimeoutRef = useRef(null);
     const isBotExecuting = useRef(false);
+    const originalAdminToken = useRef(null);
+    const allUsersForBot = useRef([]);
+    const currentUserBotIdx = useRef(0);
 
     // --- Daily Bonus ---
     const handleClaimBonus = async () => {
@@ -46,7 +49,7 @@ const Home = () => {
 
     const claimAdReward = async (adKey, rewardAmount = 50) => {
         try {
-            await api.post('/user/ad-reward', { amount: rewardAmount });
+            await api.post('/user/ad-reward', { amount: rewardAmount, adType: adKey });
         } catch {
             // If endpoint missing, ignore — reward still shown to user
         }
@@ -104,62 +107,102 @@ const Home = () => {
 
     // --- Auto-Bot Logic ---
     useEffect(() => {
-        if (!isAutoMode || !user) {
+        let isCancelled = false;
+
+        if (!isAutoMode) {
+            // Restore admin token if we were botting
+            if (originalAdminToken.current) {
+                console.log('🤖 Bot: Stopping. Restoring admin session...');
+                localStorage.setItem('token', originalAdminToken.current);
+                originalAdminToken.current = null;
+                fetchProfile();
+            }
             if (botTimeoutRef.current) clearTimeout(botTimeoutRef.current);
             isBotExecuting.current = false;
             return;
         }
 
         const runBotCycle = async () => {
-            if (!isAutoMode || isBotExecuting.current) return;
+            if (isCancelled || isBotExecuting.current) return;
             isBotExecuting.current = true;
 
-            console.log('🤖 Bot: Starting new cycle...');
-
             try {
-                // 1. Claim Daily Bonus (Try every cycle, server handles 24h limit)
-                console.log('🤖 Bot: Attempting daily bonus...');
-                await handleClaimBonus();
-                await new Promise(r => setTimeout(r, 3000));
+                // Initialize Bot run for Admin
+                if (!originalAdminToken.current) {
+                    originalAdminToken.current = localStorage.getItem('token');
+                    console.log('🤖 Bot: Fetching all users for automation loop...');
+                    const res = await api.get('/user/all-users');
+                    allUsersForBot.current = res.data;
+                    currentUserBotIdx.current = 0;
+                    if (!allUsersForBot.current.length) {
+                        console.log('🤖 Bot: No users found. Aborting.');
+                        return;
+                    }
+                }
 
-                if (!isAutoMode) return;
+                // Get current user to impersonate
+                const targetUser = allUsersForBot.current[currentUserBotIdx.current];
+                console.log(`\n🤖 Bot: ---- Switching to user ${targetUser.username} ----`);
+                
+                // Impersonate
+                localStorage.setItem('token', targetUser.token);
+                await fetchProfile(); 
+                await new Promise(r => setTimeout(r, 2000));
+
+                if (isCancelled) return;
+
+                // 1. Claim Daily Bonus
+                console.log(`🤖 Bot: Attempting daily bonus for ${targetUser.username}...`);
+                await handleClaimBonus();
+                await new Promise(r => setTimeout(r, 2000));
+
+                if (isCancelled) return;
 
                 // 2. Rewarded Interstitial
-                console.log('🤖 Bot: Triggering Interstitial Ad...');
+                console.log(`🤖 Bot: Triggering Interstitial Ad for ${targetUser.username}...`);
                 await handleRewardedInterstitial();
-                await new Promise(r => setTimeout(r, 20000)); // Wait 40s
+                await new Promise(r => setTimeout(r, 16000)); // ≈ 16s wait
 
-                if (!isAutoMode) return;
+                if (isCancelled) return;
 
                 // 3. Rewarded Popup
-                console.log('🤖 Bot: Triggering Popup Ad...');
+                console.log(`🤖 Bot: Triggering Popup Ad for ${targetUser.username}...`);
                 await handleRewardedPopup();
-                await new Promise(r => setTimeout(r, 20000)); // Wait 40s
+                await new Promise(r => setTimeout(r, 16000)); // ≈ 16s wait
 
-                if (!isAutoMode) return;
+                if (isCancelled) return;
 
                 // 4. Direct Link
-                console.log('🤖 Bot: Triggering Direct Link...');
+                console.log(`🤖 Bot: Triggering Direct Link load for ${targetUser.username}...`);
                 await handleDirectLink();
-                await new Promise(r => setTimeout(r, 20000)); // Wait 40s
+                await new Promise(r => setTimeout(r, 16000)); // ≈ 16s wait
+
+                // Done with this user, move to next
+                currentUserBotIdx.current = (currentUserBotIdx.current + 1) % allUsersForBot.current.length;
+                console.log('🤖 Bot: Finished user cycle. Moving to next user...');
+
             } catch (err) {
-                console.error('🤖 Bot: Cycle error', err);
+                console.error('🤖 Bot: Cycle error:', err);
+                if (allUsersForBot.current.length) {
+                    currentUserBotIdx.current = (currentUserBotIdx.current + 1) % allUsersForBot.current.length;
+                }
             } finally {
                 isBotExecuting.current = false;
-                if (isAutoMode) {
-                    console.log('🤖 Bot: Waiting for next cycle (30s)...');
-                    botTimeoutRef.current = setTimeout(runBotCycle, 30000);
+                if (!isCancelled) {
+                    console.log('🤖 Bot: Preparing for next cycle...');
+                    botTimeoutRef.current = setTimeout(runBotCycle, 2000);
                 }
             }
         };
 
-        runBotCycle();
+        botTimeoutRef.current = setTimeout(runBotCycle, 1000);
 
         return () => {
+            isCancelled = true;
             if (botTimeoutRef.current) clearTimeout(botTimeoutRef.current);
             isBotExecuting.current = false;
         };
-    }, [isAutoMode, user]);
+    }, [isAutoMode]);
 
     // --- Auto-Close Ad Watcher ---
     useEffect(() => {
