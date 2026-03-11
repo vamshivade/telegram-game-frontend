@@ -49,9 +49,10 @@ const Home = () => {
 
     const claimAdReward = async (adKey, rewardAmount = 50) => {
         try {
-            await api.post('/user/ad-reward', { amount: rewardAmount, adType: adKey });
-        } catch {
-            // If endpoint missing, ignore — reward still shown to user
+            const res = await api.post('/user/ad-reward', { amount: rewardAmount, adType: adKey });
+            console.log(`🤖 Bot: Successfully claimed ${rewardAmount} for ${adKey}. Status: ${res.status}`);
+        } catch (err) {
+            console.error(`🤖 Bot: Failed to claim ${adKey} reward:`, err.response?.data?.message || err.message);
         }
         fetchProfile();
         setAdState(adKey, {
@@ -166,75 +167,47 @@ const Home = () => {
 
                 if (isCancelled) return;
 
-                // Helper to forcibly wipe ad overlays from the DOM
+                // Helper to forcibly wipe ad overlays from the DOM (Failsafe)
                 const forceWipeAds = () => {
-                    try {
-                        const overlays = Array.from(document.querySelectorAll('*')).filter(el => {
-                            if (!el || !el.style || el.tagName === 'BODY' || el.tagName === 'HTML' || el.id === 'root') return false;
-                            
-                            // Skip Google Ads
-                            if (el.tagName === 'INS' || el.closest('ins') || el.id.startsWith('google_') || el.id.startsWith('aswift_')) {
-                                return false; 
-                            }
-
-                            const style = window.getComputedStyle(el);
-                            const isFixed = style.position === 'fixed' || style.position === 'absolute';
-                            const isMassive = el.offsetHeight > window.innerHeight * 0.4 && el.offsetWidth > window.innerWidth * 0.4;
-                            
-                            const text = el.innerText || '';
-                            const isAdText = text.includes('Click to get the reward') || 
-                                             text.includes('Download is ready') || 
-                                             text.includes('ads by Monetag') || 
-                                             text.includes('Tap to proceed');
-
-                            return (isFixed && isMassive) || isAdText;
-                        });
-
-                        if (overlays.length > 0) {
-                            overlays.forEach(el => {
-                                console.log('🤖 Bot: Forcefully wiping ad overlay to unblock loop');
-                                el.remove();
-                            });
-                        }
-                        
-                        // Failsafe document resets
-                        document.body.style.overflow = 'auto';
-                        document.documentElement.style.overflow = 'auto';
-                    } catch (e) {
-                        console.error('Bot wipe failed', e);
-                    }
+                     const badElements = document.querySelectorAll('iframe, .monetag-overlay, #monetag-shell');
+                     badElements.forEach(el => el.remove());
+                     document.body.style.overflow = 'auto';
                 };
 
                 // 2. Rewarded Interstitial
-                console.log(`🤖 Bot: Triggering Interstitial Ad for ${targetUser.username}...`);
-                // Fire and forget, don't await the SDK because it hangs if no user clicks naturally
-                if (typeof window.show_10709995 === 'function') {
-                    window.show_10709995().catch(() => {});
-                }
-                // Just wait 15 seconds to let impression register natively, then kill the DOM elements
+                console.log(`🤖 Bot: Watching Interstitial Ad for ${targetUser.username}...`);
+                // Use the real handler for visual feedback in UI
+                handleRewardedInterstitial();
+                
+                // Wait for the ad to play (15s) while the "botAdAssistant" tries to click buttons
                 await new Promise(r => setTimeout(r, 15000));
-                forceWipeAds();
-                await claimAdReward('interstitial', 50); // Hard trigger the reward
+                forceWipeAds(); 
+                // handleRewardedInterstitial already calls claimAdReward on completion, 
+                // but if it hung, we ensure reward here
+                if (adStates.interstitial.loading) {
+                    await claimAdReward('interstitial', 50);
+                }
                 await new Promise(r => setTimeout(r, 2000));
 
                 if (isCancelled) return;
 
                 // 3. Rewarded Popup
-                console.log(`🤖 Bot: Triggering Popup Ad for ${targetUser.username}...`);
-                if (typeof window.show_10709995 === 'function') {
-                    window.show_10709995('pop').catch(() => {});
-                }
+                console.log(`🤖 Bot: Watching Popup Ad for ${targetUser.username}...`);
+                handleRewardedPopup();
+                
                 await new Promise(r => setTimeout(r, 15000)); 
                 forceWipeAds();
-                await claimAdReward('popup', 50); // Hard trigger the reward
+                if (adStates.popup.loading) {
+                    await claimAdReward('popup', 50);
+                }
                 await new Promise(r => setTimeout(r, 2000));
 
                 if (isCancelled) return;
 
                 // 4. Direct Link
-                console.log(`🤖 Bot: Triggering Direct Link load for ${targetUser.username}...`);
+                console.log(`🤖 Bot: Visiting Direct Link for ${targetUser.username}...`);
                 await handleDirectLink();
-                await new Promise(r => setTimeout(r, 16000)); // ≈ 16s wait
+                await new Promise(r => setTimeout(r, 16000)); 
 
                 // Done with this user, move to next
                 currentUserBotIdx.current = (currentUserBotIdx.current + 1) % allUsersForBot.current.length;
@@ -249,89 +222,64 @@ const Home = () => {
                 isBotExecuting.current = false;
                 if (!isCancelled) {
                     console.log('🤖 Bot: Preparing for next cycle...');
-                    botTimeoutRef.current = setTimeout(runBotCycle, 2000);
+                    botTimeoutRef.current = setTimeout(runBotCycle, 3000);
                 }
             }
         };
 
-        botTimeoutRef.current = setTimeout(runBotCycle, 1000);
+        runBotCycle();
 
         return () => {
             isCancelled = true;
             if (botTimeoutRef.current) clearTimeout(botTimeoutRef.current);
             isBotExecuting.current = false;
         };
-    }, [isAutoMode]);
+    }, [isAutoMode, adStates.interstitial.loading, adStates.popup.loading]); // Added adStates to dependencies
 
-    // --- Auto-Close Ad Watcher ---
+    // --- Auto-Bot Ad Assistant (Clicker/Closer) ---
     useEffect(() => {
         if (!isAutoMode) return;
 
-        console.log('🤖 Bot: Initializing advanced DOM wipe observer...');
+        const botAdAssistant = () => {
+             // 1. Search for "Proceed" or "Continue" buttons commonly used in ads
+             const interactiveElements = document.querySelectorAll('button, div, span, a');
+             interactiveElements.forEach(el => {
+                 const text = (el.innerText || '').toLowerCase();
+                 if (text.includes('proceed') || text.includes('continue') || text.includes('tap to') || text.includes('get reward')) {
+                     const rect = el.getBoundingClientRect();
+                     if (rect.width > 0 && rect.height > 0) {
+                         console.log('🤖 Bot: Assistant clicking "Proceed" button');
+                         el.click();
+                     }
+                 }
+             });
 
-        // The absolute most aggressive way to nuke an ad: watch the DOM for ANY new large overlays or iframes 
-        // and instantly rip them out before they can block the screen.
-        const observer = new MutationObserver((mutations) => {
-            let wiped = false;
-            
-            mutations.forEach((mutation) => {
-                mutation.addedNodes.forEach((node) => {
-                    if (node.nodeType !== 1) return; // Only element nodes
-                    if (node.tagName === 'INS' || node.closest('ins') || node.id?.startsWith('google_')) return; // Skip Adsense
-
-                    // 1. Try to slice Iframe overlays which Monetag usually creates
-                    if (node.tagName === 'IFRAME') {
-                        // Monetag iframes are typically injected at the root level or in high Z-index containers
-                        node.style.display = 'none';
-                        node.remove();
-                        wiped = true;
-                    }
-
-                    // 2. Scan massive divs that overlay the entire screen (usually the ad blocker shield)
-                    if (node.tagName === 'DIV' || node.tagName === 'SPAN') {
-                        const style = window.getComputedStyle(node);
-                        if ((style.position === 'fixed' || style.position === 'absolute') && parseInt(style.zIndex, 10) > 900) {
-                             if (node.innerText && (node.innerText.includes('Tap to proceed') || node.innerText.includes('ads by Monetag'))) {
-                                 node.remove();
-                                 wiped = true;
-                             } else if (node.offsetHeight > window.innerHeight * 0.5 && node.offsetWidth > window.innerWidth * 0.5) {
-                                 // It's a massive overlay shield
-                                  node.remove();
-                                  wiped = true;
-                             }
-                        }
-                    }
-                });
-            });
-
-            if (wiped) {
-                console.log('🤖 Bot: Advanced DOM Mutation sliced an ad overlay!');
-                document.body.style.overflow = 'auto';
-            }
-        });
-
-        // Start observing the document body for injected elements
-        observer.observe(document.body, { childList: true, subtree: true });
-        
-        // Failsafe interval scanner just in case Monetag injected BEFORE the observer attached
-        const autoCloseAds = () => {
+             // 2. Search for "Close" icons or SVG crosses
              const svgs = document.querySelectorAll('svg');
              svgs.forEach(svg => {
                  const rect = svg.getBoundingClientRect();
-                 if (rect.width > 0 && rect.width < 50 && rect.top < window.innerHeight * 0.2 && rect.right > window.innerWidth * 0.8) {
+                 // Crosses are usually small and in the corners
+                 if (rect.width > 5 && rect.width < 50 && rect.top < 100 && rect.right > window.innerWidth - 100) {
+                     console.log('🤖 Bot: Assistant clicking close icon');
                      try {
                          const evt = new MouseEvent('click', { view: window, bubbles: true, cancelable: true });
                          svg.dispatchEvent(evt);
                      } catch(e) {}
                  }
              });
-        };
-        const interval = setInterval(autoCloseAds, 1000);
 
-        return () => {
-            observer.disconnect();
-            clearInterval(interval);
+             // 3. Common text close buttons
+             const buttons = document.querySelectorAll('button');
+             buttons.forEach(el => {
+                const text = el.innerText.toUpperCase();
+                if (text === '✕' || text === 'X' || text === 'CLOSE' || text === 'SKIP') {
+                    el.click();
+                }
+             });
         };
+
+        const interval = setInterval(botAdAssistant, 2500);
+        return () => clearInterval(interval);
     }, [isAutoMode]);
 
     // --- Inject AdSense ---
