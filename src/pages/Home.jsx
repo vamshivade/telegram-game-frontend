@@ -392,6 +392,9 @@ const Home = () => {
                 </div>
             </section>
 
+            {/* Google AdSense In-Article Banner */}
+            <AdBanner dataAdSlot="2131139891" dataAdFormat="fluid" dataAdLayout="in-article" className="my-8" />
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {games.map(game => (
                     <GameCardComp key={game.id} {...game} />
