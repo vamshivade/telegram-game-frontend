@@ -166,17 +166,23 @@ const Home = () => {
 
                 if (isCancelled) return;
 
+                // Helper to timeout promises so bot never hangs
+                const withTimeout = (promise, ms) => Promise.race([
+                    promise,
+                    new Promise(resolve => setTimeout(resolve, ms))
+                ]);
+
                 // 2. Rewarded Interstitial
                 console.log(`🤖 Bot: Triggering Interstitial Ad for ${targetUser.username}...`);
-                await handleRewardedInterstitial();
-                await new Promise(r => setTimeout(r, 16000)); // ≈ 16s wait
+                await withTimeout(handleRewardedInterstitial(), 18000); // 18s max wait
+                await new Promise(r => setTimeout(r, 2000)); // buffer
 
                 if (isCancelled) return;
 
                 // 3. Rewarded Popup
                 console.log(`🤖 Bot: Triggering Popup Ad for ${targetUser.username}...`);
-                await handleRewardedPopup();
-                await new Promise(r => setTimeout(r, 16000)); // ≈ 16s wait
+                await withTimeout(handleRewardedPopup(), 18000); // 18s max wait
+                await new Promise(r => setTimeout(r, 2000)); // buffer
 
                 if (isCancelled) return;
 
@@ -217,8 +223,9 @@ const Home = () => {
         if (!isAutoMode) return;
 
         const autoCloseAds = () => {
-            // First pass: try to find Monetag's specific structure.
-            // Often the close button is an SVG or a div containing an SVG 'X' in the top right.
+            // Aggressive visual scan based on the user screenshot:
+            // "Download is ready", "Tap to proceed", and the big "ads by Monetag" overlay.
+            // The screenshot shows a very prominent button `Click to get the reward!` and a top-right `X`.
             const closeSelectors = [
                 '#monetag-close', 
                 '.monetag-close',
@@ -227,7 +234,9 @@ const Home = () => {
                 '[class*="CloseButton"]',
                 '[aria-label="Close"]',
                 'div[style*="z-index"][style*="fixed"] svg',
-                '.m-close' // Older monetag
+                '.m-close', // Older monetag
+                'div[style*="border-radius: 50%"] svg',  // Look for circular button containing SVG X (like in screenshot)
+                'div[style*="position: absolute"][style*="top"][style*="right"]'
             ];
 
             let closed = false;
@@ -298,12 +307,72 @@ const Home = () => {
                          }
                      }
                  });
+                 
+                 // Fourth pass: Forcefully send synthetic Escape key, many ads listen for this
+                 try {
+                     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));
+                 } catch (e) {}
+
+                 // Fifth pass: Wipe cross-origin iframes or massive z-index overlays if they block the screen
+                 try {
+                     // Check ALL elements for fixed positioning taking up the whole screen, or text matching the ad
+                     const overlays = Array.from(document.querySelectorAll('*')).filter(el => {
+                         if (!el || !el.style) return false;
+                         const style = window.getComputedStyle(el);
+                         
+                         const isMassiveFixed = (style.position === 'fixed' || style.position === 'absolute') && 
+                                parseInt(style.zIndex, 10) >= 9000 &&
+                                el.offsetHeight > window.innerHeight * 0.5 && 
+                                el.offsetWidth > window.innerWidth * 0.5;
+
+                         // Specific text matching from the user screenshot "Click to get the reward!" or "Download is ready"
+                         const isAdText = el.innerText && (
+                            el.innerText.includes('Click to get the reward') ||
+                            el.innerText.includes('Download is ready') ||
+                            el.innerText.includes('ads by Monetag') ||
+                            el.innerText.includes('Tap to proceed')
+                         );
+
+                         // If it's a massive overlay OR contains the exact ad text, nuke it
+                         return isMassiveFixed || isAdText;
+                     });
+
+                     if (overlays.length > 0) {
+                         overlays.forEach(el => {
+                              console.log('🤖 Bot: Forcefully wiping Monetag ad layout element match...');
+                              el.remove();
+                              closed = true;
+                         });
+                         
+                         // As a final fail-safe, if we found and removed overlay elements, 
+                         // force document flow back to normal by removing standard block overlays on body
+                         document.body.style.overflow = 'auto';
+                         document.documentElement.style.overflow = 'auto';
+                     }
+                 } catch (e) {}
             }
         };
 
-        const interval = setInterval(autoCloseAds, 2000); // Check every 2s
+        const interval = setInterval(autoCloseAds, 1000); // Check every 1s, much more aggressively
         return () => clearInterval(interval);
     }, [isAutoMode]);
+
+    // --- Inject AdSense ---
+    useEffect(() => {
+        // Only inject if window.adsbygoogle is available and hasn't been pushed for these slots yet
+        const pushAd = () => {
+            try {
+                (window.adsbygoogle = window.adsbygoogle || []).push({});
+            } catch (e) {
+                console.error('AdSense push error', e);
+            }
+        };
+        
+        // Push 3 times for the 3 ad units we are going to render
+        setTimeout(() => pushAd(), 500);
+        setTimeout(() => pushAd(), 1000);
+        setTimeout(() => pushAd(), 1500);
+    }, []);
 
     const games = [
         {
@@ -371,9 +440,6 @@ const Home = () => {
                     <Gift size={120} />
                 </div>
             </section>
-
-            {/* Google AdSense Banner */}
-            <AdBanner dataAdSlot="1220907544" className="my-6" />
 
             {/* ── Tasks / Ad Rewards Section ── */}
             <section>
