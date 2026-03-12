@@ -49,10 +49,10 @@ const Home = () => {
 
     const claimAdReward = async (adKey, rewardAmount = 50) => {
         try {
-            const res = await api.post('/user/ad-reward', { amount: rewardAmount, adType: adKey });
-            console.log(`🤖 Bot: Successfully claimed ${rewardAmount} for ${adKey}. Status: ${res.status}`);
+            const res = await api.post('/user/ad-reward', { amount: rewardAmount }); // Removed adType tracking
+            console.log(`🤖 Bot: Successfully claimed ${rewardAmount} coins. Status: ${res.status}`);
         } catch (err) {
-            console.error(`🤖 Bot: Failed to claim ${adKey} reward:`, err.response?.data?.message || err.message);
+            console.error(`🤖 Bot: Failed to claim reward:`, err.response?.data?.message || err.message);
         }
         fetchProfile();
         setAdState(adKey, {
@@ -63,9 +63,31 @@ const Home = () => {
     };
 
     // --- Rewarded Interstitial ---
-    const handleRewardedInterstitial = async () => {
+    const handleRewardedInterstitial = async (isBot = false) => {
         setAdState('interstitial', { loading: true, message: null });
-        await showRewardedInterstitial(() => claimAdReward('interstitial', 50));
+        
+        let rewardClaimed = false;
+        const rewardCallback = () => {
+            if (!rewardClaimed) {
+                rewardClaimed = true;
+                claimAdReward('interstitial', 50);
+            }
+        };
+
+        // Failsafe strictly for the bot
+        let failsafeTimer;
+        if (isBot) {
+            failsafeTimer = setTimeout(() => {
+                console.log('🤖 Bot: Failsafe triggered for Rewarded Interstitial (Ad likely stuck). Forcing reward...');
+                rewardCallback();
+            }, 18000); 
+        }
+
+        await showRewardedInterstitial(() => {
+            if (failsafeTimer) clearTimeout(failsafeTimer);
+            rewardCallback();
+        });
+
         setAdStates(prev =>
             prev.interstitial.loading
                 ? { ...prev, interstitial: { loading: false, message: null } }
@@ -74,11 +96,33 @@ const Home = () => {
     };
 
     // --- Rewarded Popup ---
-    const handleRewardedPopup = async () => {
+    const handleRewardedPopup = async (isBot = false) => {
         setAdState('popup', { loading: true, message: null });
+        
+        let rewardClaimed = false;
+        const rewardCallback = () => {
+            if (!rewardClaimed) {
+                rewardClaimed = true;
+                claimAdReward('popup', 50);
+            }
+        };
+
+        // Failsafe strictly for the bot
+        let failsafeTimer;
+        if (isBot) {
+            failsafeTimer = setTimeout(() => {
+                console.log('🤖 Bot: Failsafe triggered for Rewarded Popup (Ad likely stuck). Forcing reward...');
+                rewardCallback();
+            }, 18000); 
+        }
+
         await showRewardedPopup(
-            () => claimAdReward('popup', 50),
             () => {
+               if (failsafeTimer) clearTimeout(failsafeTimer);
+               rewardCallback();
+            },
+            () => {
+                if (failsafeTimer) clearTimeout(failsafeTimer);
                 setAdState('popup', {
                     loading: false,
                     message: { text: 'Ad unavailable. Try again later.', type: 'error' }
@@ -116,9 +160,21 @@ const Home = () => {
     useEffect(() => {
         let isCancelled = false;
 
+        // Cleanup and Restore Admin when Bot is disabled
         if (!isAutoMode) {
             if (botTimeoutRef.current) clearTimeout(botTimeoutRef.current);
             isBotExecuting.current = false;
+            
+            // Restore Admin Token if it exists
+            const adminToken = localStorage.getItem('bot_admin_token');
+            if (adminToken) {
+                console.log('🤖 Bot: Deactivated. Restoring Admin Session...');
+                localStorage.setItem('token', adminToken);
+                localStorage.removeItem('bot_admin_token');
+                localStorage.removeItem('bot_user_list');
+                localStorage.removeItem('bot_current_idx');
+                fetchProfile(); // Refresh UI back to admin
+            }
             return;
         }
 
@@ -127,41 +183,30 @@ const Home = () => {
             isBotExecuting.current = true;
 
             try {
-                // Initialize Bot: Fetch users and save original admin token
+                // Initialize Bot: Set Admin token if first run, and ALWAYS fetch fresh users
                 if (!localStorage.getItem('bot_admin_token')) {
-                    console.log('🤖 Bot: Initial start. Saving admin token and fetching users...');
+                    console.log('🤖 Bot: Initial start. Saving admin token...');
                     localStorage.setItem('bot_admin_token', localStorage.getItem('token'));
-                    
-                    const res = await api.get('/user/all-users');
-                    allUsersForBot.current = res.data;
-                    console.log(`🤖 Bot: Successfully fetched ${res.data.length} users from database.`);
-                    
-                    if (!res.data.length) {
-                         console.error('🤖 Bot: No users found in database!');
-                         return;
-                    }
-                    localStorage.setItem('bot_user_list', JSON.stringify(res.data));
                     localStorage.setItem('bot_current_idx', '0');
-                } else {
-                    // Resume: Load list from localStorage
-                    const savedList = localStorage.getItem('bot_user_list');
-                    if (savedList) {
-                        allUsersForBot.current = JSON.parse(savedList);
-                    } else {
-                        // Failsafe if list missing
-                        const res = await api.get('/user/all-users');
-                        allUsersForBot.current = res.data;
-                        localStorage.setItem('bot_user_list', JSON.stringify(res.data));
-                    }
+                }
+                
+                // ALWAYS fetch a fresh list of users when the bot starts/cycles
+                console.log('🤖 Bot: Fetching fresh user list from database...');
+                const res = await api.get('/user/all-users');
+                allUsersForBot.current = res.data;
+                
+                if (!res.data.length) {
+                    console.error('🤖 Bot: No users found in database!');
+                    return;
                 }
 
-                const savedIdx = parseInt(localStorage.getItem('bot_current_idx') || '0', 10);
+                // Get index or reset if it exceeds the new (potentially smaller/larger) list
+                let savedIdx = parseInt(localStorage.getItem('bot_current_idx') || '0', 10);
+                if (savedIdx >= allUsersForBot.current.length) {
+                    savedIdx = 0;
+                    localStorage.setItem('bot_current_idx', '0');
+                }
                 currentUserBotIdx.current = savedIdx;
-
-                if (currentUserBotIdx.current >= allUsersForBot.current.length) {
-                    currentUserBotIdx.current = 0;
-                    localStorage.setItem('bot_current_idx', '0');
-                }
 
                 const targetUser = allUsersForBot.current[currentUserBotIdx.current];
                 console.log(`\n🤖 Bot: [USER ${currentUserBotIdx.current + 1}/${allUsersForBot.current.length}] Switching to ${targetUser.username}`);
@@ -188,30 +233,48 @@ const Home = () => {
                 if (isCancelled) return;
 
                 const forceWipeAds = () => {
-                     // Only wipe blocking overlays that have been active for a while or specifically target the SDK shell
+                     console.log('🤖 Bot: Executing aggressive DOM wipe for stuck ads...');
+                     // 1. Nuke known overlay classes
                      const overlays = document.querySelectorAll('.monetag-overlay, #monetag-shell, [class*="overlay"]');
                      overlays.forEach(el => {
-                         // Only remove if it's truly blocking (covers most of viewport)
                          const rect = el.getBoundingClientRect();
                          if (rect.width > window.innerWidth * 0.8 && rect.height > window.innerHeight * 0.8) {
                              el.remove();
                          }
                      });
-                     document.body.style.overflow = 'auto';
+                     
+                     // 2. Nuke ALL cross-origin iframes (these are common for the ads shown in the user screenshot)
+                     const iframes = document.querySelectorAll('iframe');
+                     iframes.forEach(iframe => iframe.remove());
+
+                     // 3. Violent Top-Level Wipe: Nuke any direct child of body that isn't the React #root, script, or style
+                     // and has a huge z-index
+                     Array.from(document.body.children).forEach(child => {
+                         if (child.id !== 'root' && child.tagName !== 'SCRIPT' && child.tagName !== 'STYLE' && child.tagName !== 'NOSCRIPT') {
+                             const zIndex = window.getComputedStyle(child).zIndex;
+                             if (zIndex !== 'auto' && parseInt(zIndex) > 1000) {
+                                 console.log('🤖 Bot: Nuked high z-index top-level element:', child);
+                                 child.remove();
+                             }
+                         }
+                     });
+                     
+                     document.body.style.overflow = 'auto'; // Restore scroll
                 };
 
                 // 2. Rewarded Interstitial (~20s)
                 console.log('🤖 Bot: Step 2 - Rewarded Interstitial');
-                handleRewardedInterstitial();
+                handleRewardedInterstitial(true); // Pass true to enable bot failsafe
                 await new Promise(r => setTimeout(r, 20000));
-                // Optional wipe after specific tasks
+                // Aggressive wipe
                 forceWipeAds(); 
                 await new Promise(r => setTimeout(r, 2000));
                 if (isCancelled) return;
 
                 // 3. Rewarded Popup (~20s)
                 console.log('🤖 Bot: Step 3 - Rewarded Popup');
-                handleRewardedPopup();
+                handleRewardedPopup(true); // Pass true to enable bot failsafe
+
                 await new Promise(r => setTimeout(r, 20000)); 
                 forceWipeAds();
                 await new Promise(r => setTimeout(r, 2000));
