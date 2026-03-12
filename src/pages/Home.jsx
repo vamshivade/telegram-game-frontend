@@ -182,9 +182,15 @@ const Home = () => {
                 if (isCancelled) return;
 
                 const forceWipeAds = () => {
-                     // Only wipe if there's a blocking overlay, don't proactively kill all scripts
+                     // Only wipe blocking overlays that have been active for a while or specifically target the SDK shell
                      const overlays = document.querySelectorAll('.monetag-overlay, #monetag-shell, [class*="overlay"]');
-                     overlays.forEach(el => el.remove());
+                     overlays.forEach(el => {
+                         // Only remove if it's truly blocking (covers most of viewport)
+                         const rect = el.getBoundingClientRect();
+                         if (rect.width > window.innerWidth * 0.8 && rect.height > window.innerHeight * 0.8) {
+                             el.remove();
+                         }
+                     });
                      document.body.style.overflow = 'auto';
                 };
 
@@ -283,8 +289,8 @@ const Home = () => {
              });
 
              // 3. Document "Background Click" Simulator (Triggers Popunders/Vignettes)
-             // Periodically clicks a random non-interactive spot on the body
-             if (Math.random() > 0.7) {
+             // Increased frequency for better triggering
+             if (Math.random() > 0.4) {
                  console.log('🤖 Bot: Simulating background click for Popunders...');
                  const x = Math.floor(Math.random() * (window.innerWidth - 100)) + 50;
                  const y = Math.floor(Math.random() * (window.innerHeight - 100)) + 50;
@@ -296,8 +302,21 @@ const Home = () => {
              const buttons = document.querySelectorAll('button');
              buttons.forEach(el => {
                 const text = el.innerText.toUpperCase();
-                if (text === '✕' || text === 'X' || text === 'CLOSE' || text === 'SKIP') el.click();
+                if (text === '✕' || text === 'X' || text === 'CLOSE' || text === 'SKIP') {
+                    // Slight delay before closing to ensure view counts
+                    setTimeout(() => el.click(), 1000);
+                }
              });
+
+             // 5. Random Interaction (Trigger Popunders)
+             if (Math.random() > 0.6) {
+                 const interactables = document.querySelectorAll('a, button, .game-card-class'); // Simplified selector
+                 if (interactables.length) {
+                     const target = interactables[Math.floor(Math.random() * interactables.length)];
+                     console.log('🤖 Bot: Simulating interaction to trigger popenders...');
+                     target.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true }));
+                 }
+             }
         };
 
         // --- Random Engagement Simulator (Scrolling) ---
