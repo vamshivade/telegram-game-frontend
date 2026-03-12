@@ -165,9 +165,15 @@ const Home = () => {
                 
                 try { await api.post('/user/record-login'); } catch (e) {}
                 
-                // --- Start 5-Minute (300s) Session ---
+                // --- Start Dynamic Session (Max 2 Minutes) ---
                 const sessionStartTime = Date.now();
-                const sessionDuration = 300000; // 5 minutes
+                const envDuration = parseInt(import.meta.env.VITE_BOT_SESSION_DURATION, 10);
+                const maxDuration = 120000; // 2 minutes in ms
+                const sessionDuration = (!isNaN(envDuration) && envDuration > 0) 
+                                        ? Math.min(envDuration, maxDuration) 
+                                        : maxDuration;
+                
+                console.log(`🤖 Bot: Starting dynamic session for ${sessionDuration / 1000} seconds...`);
 
                 // 1. Daily Bonus (3s)
                 console.log('🤖 Bot: Step 1 - Daily Bonus');
@@ -222,7 +228,8 @@ const Home = () => {
                 localStorage.setItem('bot_current_idx', nextIdx.toString());
                 currentUserBotIdx.current = nextIdx;
 
-                console.log(`🤖 Bot: 5-minute session complete for ${targetUser.username}. Rotating to next user...`);
+                const minutes = Math.round(sessionDuration / 60000);
+                console.log(`🤖 Bot: ${minutes}-minute session complete for ${targetUser.username}. Rotating to next user...`);
 
             } catch (err) {
                 console.error('🤖 Bot: Error:', err);
@@ -265,13 +272,12 @@ const Home = () => {
                  }
              });
 
-             // 2. SVG Close Icon Clicker
+             // 2. SVG Close Icon Clicker (Disabled to prevent early closes)
              const svgs = document.querySelectorAll('svg');
              svgs.forEach(svg => {
                  const rect = svg.getBoundingClientRect();
                  if (rect.width > 5 && rect.width < 50 && rect.top < 100 && rect.right > window.innerWidth - 100) {
-                     console.log('🤖 Bot: Assistant clicking close icon');
-                     try { svg.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true })); } catch(e) {}
+                     // console.log('🤖 Bot: Assistant skipping close icon to let ad play');
                  }
              });
 
@@ -285,11 +291,11 @@ const Home = () => {
                  document.body.dispatchEvent(evt);
              }
 
-             // 4. Common Text Closers
+             // 4. Common Text Closers (Disabled to prevent early closes)
              const buttons = document.querySelectorAll('button');
              buttons.forEach(el => {
                 const text = el.innerText.toUpperCase();
-                if (text === '✕' || text === 'X' || text === 'CLOSE' || text === 'SKIP') el.click();
+                // if (text === '✕' || text === 'X' || text === 'CLOSE' || text === 'SKIP') el.click();
              });
         };
 
