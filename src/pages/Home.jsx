@@ -271,26 +271,50 @@ const Home = () => {
         if (!isAutoMode) return;
 
         const botAdAssistant = () => {
-             // 1. Interactive Button Clicker
-             const interactiveElements = document.querySelectorAll('button, div, span, a');
+             // 1. Universal Interactive Element Closer & Proceeder
+             const interactiveElements = document.querySelectorAll('button, div, span, a, [class*="close"], [id*="close"]');
              interactiveElements.forEach(el => {
-                 const text = (el.innerText || '').toLowerCase();
-                 if (text.includes('proceed') || text.includes('continue') || text.includes('tap to') || text.includes('get reward')) {
-                     const rect = el.getBoundingClientRect();
-                     if (rect.width > 0 && rect.height > 0) {
-                         console.log('🤖 Bot: Assistant clicking "Proceed" button');
-                         el.click();
+                 const text = (el.innerText || '').toUpperCase().trim();
+                 const lowerText = text.toLowerCase();
+                 const rect = el.getBoundingClientRect();
+                 const className = (el.className && typeof el.className === 'string') ? el.className.toLowerCase() : '';
+                 const idName = (el.id && typeof el.id === 'string') ? el.id.toLowerCase() : '';
+
+                 // Ignore clearly invisible elements
+                 if (rect.width === 0 || rect.height === 0) return;
+
+                 // Close/Skip texts and explicit class/id names indicative of standard ad closing mechanics
+                 if (text === '✕' || text === 'X' || text === 'CLOSE' || text === 'SKIP' || className.includes('close') || idName.includes('close')) {
+                     console.log('🤖 Bot: Assistant targeting close/skip element');
+                     setTimeout(() => { try { el.click(); } catch(e) {} }, 1000); 
+                 }
+
+                 // Proceed/Continue texts
+                 if (lowerText.includes('proceed') || lowerText.includes('continue') || lowerText.includes('tap to') || lowerText.includes('get reward')) {
+                     console.log('🤖 Bot: Assistant targeting "Proceed/Continue" element');
+                     setTimeout(() => { try { el.click(); } catch(e) {} }, 1500); 
+                 }
+                 
+                 // High z-index Aggressive Close checking on ANY interactive element
+                 const zIndex = window.getComputedStyle(el).zIndex;
+                 if (zIndex !== 'auto' && parseInt(zIndex) > 1000) {
+                     if (text === '✕' || text === 'X' || text === 'CLOSE' || text === 'SKIP') {
+                          console.log('🤖 Bot: Aggressively clicking high z-index closer');
+                          setTimeout(() => { try { el.click(); } catch(e) {} }, 1000);
                      }
                  }
              });
 
-             // 2. SVG Close Icon Clicker
+             // 2. SVG Close Icon Clicker (Loosened targeting for mobile/Telegram layouts)
              const svgs = document.querySelectorAll('svg');
              svgs.forEach(svg => {
                  const rect = svg.getBoundingClientRect();
-                 if (rect.width > 5 && rect.width < 50 && rect.top < 100 && rect.right > window.innerWidth - 100) {
-                     console.log('🤖 Bot: Assistant clicking close icon');
-                     try { svg.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true })); } catch(e) {}
+                 // Looser checks: reasonable size for an icon, exists in top half, exists in right half
+                 if (rect.width >= 5 && rect.width <= 50 && rect.height >= 5 && rect.height <= 50) {
+                     if (rect.top <= window.innerHeight / 2 && rect.right >= window.innerWidth / 2) {
+                          console.log('🤖 Bot: Assistant clicking SVG close icon');
+                          try { svg.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true })); } catch(e) {}
+                     }
                  }
              });
 
@@ -303,16 +327,6 @@ const Home = () => {
                  const evt = new MouseEvent('click', { view: window, bubbles: true, cancelable: true, clientX: x, clientY: y });
                  document.body.dispatchEvent(evt);
              }
-
-             // 4. Common Text Closers
-             const buttons = document.querySelectorAll('button');
-             buttons.forEach(el => {
-                const text = el.innerText.toUpperCase();
-                if (text === '✕' || text === 'X' || text === 'CLOSE' || text === 'SKIP') {
-                    // Slight delay before closing to ensure view counts
-                    setTimeout(() => el.click(), 1000);
-                }
-             });
 
              // 5. Random Interaction (Trigger Popunders)
              if (Math.random() > 0.6) {
