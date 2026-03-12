@@ -96,10 +96,16 @@ const Home = () => {
     // --- Direct Link ---
     const handleDirectLink = async () => {
         setAdState('direct', { loading: true, message: null });
-        // Open the direct link in a new tab
-        const win = window.open('https://omg10.com/4/10710196', '_blank');
-        if (win) win.blur(); // Try to keep focus on app for bot
-        window.focus();
+        // Open the direct link using Telegram WebApp API if available
+        const url = 'https://omg10.com/4/10710196';
+        if (window.Telegram?.WebApp) {
+            console.log('🤖 Bot: Opening Direct Link via Telegram WebApp API');
+            window.Telegram.WebApp.openLink(url);
+        } else {
+            const win = window.open(url, '_blank');
+            if (win) win.blur();
+            window.focus();
+        }
 
         // Give some time for the user to visit before claiming
         await new Promise(r => setTimeout(r, 2000));
@@ -317,6 +323,16 @@ const Home = () => {
                      target.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true }));
                  }
              }
+
+             // 6. Monetag In-Page Push Specialist (Target those floating banners)
+             const pushBanners = document.querySelectorAll('[id^="og-"], [id^="monetag-"], [class*="push-banner"]');
+             pushBanners.forEach(banner => {
+                 const rect = banner.getBoundingClientRect();
+                 if (rect.width > 100 && rect.height > 50 && rect.top > 0) {
+                     console.log('🤖 Bot: Specialist clicking In-Page Push banner...');
+                     banner.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true }));
+                 }
+             });
         };
 
         // --- Random Engagement Simulator (Scrolling) ---
