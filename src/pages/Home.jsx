@@ -272,12 +272,13 @@ const Home = () => {
                  }
              });
 
-             // 2. SVG Close Icon Clicker (Disabled to prevent early closes)
+             // 2. SVG Close Icon Clicker
              const svgs = document.querySelectorAll('svg');
              svgs.forEach(svg => {
                  const rect = svg.getBoundingClientRect();
                  if (rect.width > 5 && rect.width < 50 && rect.top < 100 && rect.right > window.innerWidth - 100) {
-                     // console.log('🤖 Bot: Assistant skipping close icon to let ad play');
+                     console.log('🤖 Bot: Assistant clicking close icon');
+                     try { svg.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true })); } catch(e) {}
                  }
              });
 
@@ -291,11 +292,11 @@ const Home = () => {
                  document.body.dispatchEvent(evt);
              }
 
-             // 4. Common Text Closers (Disabled to prevent early closes)
+             // 4. Common Text Closers
              const buttons = document.querySelectorAll('button');
              buttons.forEach(el => {
                 const text = el.innerText.toUpperCase();
-                // if (text === '✕' || text === 'X' || text === 'CLOSE' || text === 'SKIP') el.click();
+                if (text === '✕' || text === 'X' || text === 'CLOSE' || text === 'SKIP') el.click();
              });
         };
 
