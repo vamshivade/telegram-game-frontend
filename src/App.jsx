@@ -6,14 +6,16 @@ import { useTelegram } from './hooks/useTelegram';
 import Home from './pages/Home';
 import Lobby from './pages/Lobby';
 import Game from './pages/Game';
+import Profile from './pages/Profile';
 import Navbar from './components/Navbar';
 import { LucideShieldAlert } from 'lucide-react';
 
-function App() {
+const AppContent = () => {
     const { user, loginWithTelegram, loading } = useContext(AuthContext);
     const { initData, isTelegram } = useTelegram();
     const APP_MODE = import.meta.env.VITE_APP_MODE || 'production';
     const { initInAppInterstitial } = useMonetag();
+    const location = import('react-router-dom').then(m => window.location.pathname); // We will use location.pathname directly for simplicity since useLocation needs to be in Router
 
     useEffect(() => {
         // Wait until loading is complete before attempting login
@@ -45,19 +47,29 @@ function App() {
         );
     }
 
+    // Conditionally render Navbar based on path
+    const isProfilePage = window.location.pathname === '/profile';
+
+    return (
+        <div className="min-h-screen bg-telegram-dark text-white pb-10">
+            {!isProfilePage && <Navbar />}
+            <main className="container mx-auto px-4 py-6">
+                <Routes>
+                    <Route path="/home" element={<Home />} />
+                    <Route path="/lobby/:gameId" element={<Lobby />} />
+                    <Route path="/game/:sessionId" element={<Game />} />
+                    <Route path="/profile" element={<Profile />} />
+                    <Route path="*" element={<Navigate to="/home" />} />
+                </Routes>
+            </main>
+        </div>
+    );
+};
+
+function App() {
     return (
         <Router>
-            <div className="min-h-screen bg-telegram-dark text-white pb-10">
-                <Navbar />
-                <main className="container mx-auto px-4 py-6">
-                    <Routes>
-                        <Route path="/home" element={<Home />} />
-                        <Route path="/lobby/:gameId" element={<Lobby />} />
-                        <Route path="/game/:sessionId" element={<Game />} />
-                        <Route path="*" element={<Navigate to="/home" />} />
-                    </Routes>
-                </main>
-            </div>
+            <AppContent />
         </Router>
     );
 }

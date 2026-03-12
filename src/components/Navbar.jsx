@@ -1,5 +1,6 @@
 import { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
+import { Link } from 'react-router-dom';
 import { Coins, User as UserIcon, Bot, Power } from 'lucide-react';
 
 const Navbar = () => {
@@ -36,12 +37,12 @@ const Navbar = () => {
 
                 {user && (
                     <div className="flex items-center gap-3">
-                        <div className="hidden md:flex items-center gap-1.5 bg-white/5 py-1 px-3 rounded-full border border-white/10">
+                        <Link to="/profile" className="hidden md:flex items-center gap-1.5 bg-white/5 py-1 px-3 rounded-full border border-white/10 hover:bg-white/10 transition-colors cursor-pointer">
                             <span className="text-sm font-medium text-gray-400">
                                 <UserIcon size={14} className="inline mr-1" />
                                 {user.username || user.firstName}
                             </span>
-                        </div>
+                        </Link>
                         <div className="flex items-center gap-1.5 bg-telegram-blue/10 py-1 px-3 rounded-full border border-telegram-blue/20">
                             <Coins size={14} className="text-telegram-blue" />
                             <span className="text-sm font-bold text-telegram-blue">
